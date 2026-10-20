@@ -16,7 +16,7 @@
 ## 下載與安裝
 請前往 [Releases](../../releases) 頁面下載對應平台的安裝檔：
 * **Windows 電腦版**：下載 `Endfield_Tracker.zip`，解壓縮後開啟資料夾內的 `.exe` 檔案即可執行。
-* **Android 手機版**：下載 `Endfield尋訪終端.apk` 直接安裝。
+* **Android 手機版**：下載 `Endfield_Tracker.apk` 直接安裝。
 
 ---
 
