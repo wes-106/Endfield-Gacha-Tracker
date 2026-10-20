@@ -46,3 +46,8 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# 隱藏 Android 打包金鑰與憑證設定檔
+*.jks
+*.keystore
+android/key.properties

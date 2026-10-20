@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// 負責存放純靜態、說明性質的對話框 (免責聲明、使用說明)
 class InfoDialogs {
@@ -38,6 +39,39 @@ class InfoDialogs {
                     child: Text(
                       'Made by wes-106  |  v1.0.0',
                       style: TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 0.5),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+
+                  // GitHub 連結
+                  Center(
+                    child: InkWell(
+                      onTap: () async {
+                        final Uri url = Uri.parse('https://github.com/wes-106/Endfield-Gacha-Tracker');
+                        if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
+                          debugPrint('Could not launch $url');
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(4),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.code, color: Color(0xFF60A5FA), size: 14),
+                            const SizedBox(width: 6),
+                            const Text(
+                              '前往 GitHub 專案與檢查更新',
+                              style: TextStyle(
+                                color: Color(0xFF60A5FA),
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                                decoration: TextDecoration.underline,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -160,6 +194,7 @@ class InfoDialogs {
       ),
     );
   }
+
   // 專門用來處理帶有顏色與特效的免責聲明區塊
   static Widget _buildRichDisclaimerItem(String title, List<InlineSpan> spans) {
     return Padding(
