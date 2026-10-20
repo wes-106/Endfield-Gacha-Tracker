@@ -185,7 +185,7 @@ class SubBannerCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: const Text(
-                      '此卡池常規區間目前尚無 6★ 出金紀錄',
+                      '此卡池常規區間目前尚無 6★ 出彩紀錄',
                       style: TextStyle(color: Colors.white38, fontSize: 12),
                     ),
                   )

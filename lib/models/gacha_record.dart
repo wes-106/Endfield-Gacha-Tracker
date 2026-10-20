@@ -54,7 +54,7 @@ class SubBannerGroup {
   final String periodStr;      // 卡池期間或狀態標籤
   final int totalPulls;        // 該池帳面累計總抽數 (含免費 10 抽)
   final int effectivePulls;    // 扣除免費 10 抽後的有效計入抽數
-  final int currentPity;       // 結算後剩餘未出金抽數 (目前墊抽)
+  final int currentPity;       // 結算後剩餘未出彩抽數 (目前墊抽)
   final int hardPityLimit;     // 保底上限
   final bool isWeapon;         // 是否為武庫申領
   final int freePullsCount;    // 已觸發的免費抽數 (0 ~ 10)
