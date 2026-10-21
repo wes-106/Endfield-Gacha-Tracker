@@ -1,6 +1,6 @@
 # Endfield Gacha Tracker (終末地尋訪紀錄終端)
 
-為《明日方舟：終末地》國際服玩家打造的本地端、無雲端零信任尋訪紀錄分析工具。支援 Windows 與 Android 雙平台。
+為《明日方舟：終末地》國際服玩家打造的本機尋訪紀錄管理與分析工具，支援 Windows 與 Android。尋訪紀錄主要儲存於使用者裝置，不需要自行架設或使用本專案的雲端資料庫。
 
 ---
 
@@ -42,13 +42,13 @@
 如果您希望親自驗證程式碼，或針對不同平台進行編譯，請參考以下步驟：
 
 ### 環境要求
-- [Flutter SDK](https://flutter.dev/docs/get-started/install) (版本 3.47.7 或以上)
+- [Flutter SDK](https://flutter.dev/docs/get-started/install) (版本 3.13.5 或以上)
 - 若編譯 Windows 版：需安裝 Visual Studio 2022 (包含 C++ 桌面開發工作負載)
 - 若編譯 Android 版：需安裝 Android Studio 
 
 ### 1. 取得原始碼與依賴套件
 ```bash
-git clone [https://github.com/wes-106/Endfield-Gacha-Tracker.git](https://github.com/wes-106/Endfield-Gacha-Tracker.git)
+git clone https://github.com/wes-106/Endfield-Gacha-Tracker.git
 cd gacha_record
 flutter pub get
 ```
@@ -79,6 +79,7 @@ flutter build apk --release
 1. 下載並開啟應用程式。
 2. 點擊「同步尋訪紀錄」，根據畫面指示前往官方網站登入。
 3. 獲取您的專屬 Token，並將其貼入程式的輸入框中，點擊開始同步即可。
+
 *(詳細的圖文教學與資料備份機制，請參考程式內建的「使用說明」選項)*
 > **注意事項：官方伺服器僅保留近 90 天的尋訪紀錄。** 建議玩家養成定期將資料同步至本機的習慣，避免早期紀錄因超過期限而遺失。
 
