@@ -32,7 +32,7 @@ class GachaRecord {
 class SixStarPityItem {
   final String name;
   final int pityCount;    // 幾抽出彩 (或里程碑達成抽數)
-  final bool isUp;
+  final bool? isUp;
   final String dateStr;
   final bool isMilestone; // 是否為系統贈送里程碑 (240n 潛能 / 180+160n 武器)
   final bool isFree;      // 是否屬於角色池 31~40 抽免費區間
@@ -40,7 +40,7 @@ class SixStarPityItem {
   SixStarPityItem({
     required this.name,
     required this.pityCount,
-    this.isUp = true,
+    this.isUp,
     required this.dateStr,
     this.isMilestone = false,
     this.isFree = false,

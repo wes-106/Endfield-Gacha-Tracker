@@ -189,10 +189,11 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
 
   /// 於背景非同步下載遠端圖庫字典與卡池 UP 對照表
   Future<void> _fetchRemoteAvatarMap() async {
-    final uids = await LocalStorage.getAllUids();
-    if (uids.isNotEmpty) {
-      accountUids = uids;
-      currentUid = uids.first;
+    final rawUids = await LocalStorage.getAllUids();
+    if (rawUids.isNotEmpty) {
+      // 強制把任何沒有底線的舊 UID 加上 _2 顯示與使用
+      accountUids = rawUids.map((id) => id.contains('_') ? id : '${id}_2').toList();
+      currentUid = accountUids.first;
       await _loadLocalDataForCurrentUid();
     }
 
@@ -318,11 +319,13 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
           setState(() { _isSyncing = syncing; });
         },
         onSyncCompleted: (newUid, newPools) async {
+          // 確保 newUid 一定帶有伺服器後綴
+          final normalizedUid = newUid.contains('_') ? newUid : '${newUid}_2';
           setState(() {
-            if (!accountUids.contains(newUid)) {
-              accountUids.add(newUid);
+            if (!accountUids.contains(normalizedUid)) {
+              accountUids.add(normalizedUid);
             }
-            currentUid = newUid;
+            currentUid = normalizedUid;
             poolBannersData = newPools;
             selectedPool = 'Special';
           });
@@ -446,7 +449,6 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
           ),
           const SizedBox(width: 8),
           // 電腦版帳號切換下拉選單 (類似 Google 搜尋欄)
-          // 🟢 電腦版 (EXE) 多帳號無縫切換下拉選單
           if (accountUids.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(right: 16),
@@ -454,14 +456,14 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                 initialValue: currentUid,
                 tooltip: '帳號切換',
                 position: PopupMenuPosition.under,
-                constraints: const BoxConstraints(minWidth: 140, maxWidth: 140),
+                constraints: const BoxConstraints(minWidth: 170, maxWidth: 170),
                 color: const Color(0xFF2A2D36),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                   side: const BorderSide(color: Colors.white12),
                 ),
                 child: Container(
-                  width: 140, // 鎖定按鈕寬度為 140，與選單一致
+                  width: 170,
                   height: 30,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
@@ -493,8 +495,9 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                   ),
                 )).toList(),
                 onSelected: (newUid) async {
-                  if (newUid != currentUid) {
-                    setState(() { currentUid = newUid; });
+                  final normalizedUid = newUid.contains('_') ? newUid : '${newUid}_2';
+                  if (normalizedUid != currentUid) {
+                    setState(() { currentUid = normalizedUid; });
                     await _loadLocalDataForCurrentUid();
                   }
                 },
@@ -558,7 +561,7 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                                 const SizedBox(height: 2),
                               ],
                               Text(
-                                'UID: ${currentUid ?? "未知"}',
+                                'UID: ${currentUid?.split('_').first ?? "未知"}',
                                 style: const TextStyle(color: Color(0xFFFFCC00), fontSize: 13, fontWeight: FontWeight.w900),
                               ),
                               const SizedBox(height: 6),
@@ -851,18 +854,58 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                     ListTile(
                       leading: const Icon(Icons.upload_file, color: Color(0xFF60A5FA)),
                       title: const Text('匯出資料備份 (JSON)', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                      onTap: () {
-                        Navigator.pop(context);
-                        BackupService.exportBackupJson(context, currentUid);
+                      onTap: () async {
+                        // 1. 先關閉外層的「資料備份與管理」設定對話框
+                        Navigator.pop(innerContext);
+
+                        // 2. 判斷是否有超過一個帳號，彈出選擇對話框
+                        if (accountUids.length > 1) {
+                          final selectedUid = await showDialog<String>(
+                            context: context,
+                            builder: (dialogContext) => AlertDialog(
+                              backgroundColor: const Color(0xFF181920),
+                              title: const Text('請點選要匯出的帳號', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                              content: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: accountUids.map((uid) => ListTile(
+                                  leading: const Icon(Icons.person, color: Color(0xFF60A5FA)),
+                                  title: Text(
+                                      'UID: $uid',
+                                      style: TextStyle(
+                                        // 當前帳號用特別的顏色標註
+                                          color: uid == currentUid ? const Color(0xFFFFCC00) : Colors.white,
+                                          fontWeight: uid == currentUid ? FontWeight.bold : FontWeight.normal
+                                      )
+                                  ),
+                                  // 用副標題提示哪個是當前帳號
+                                  subtitle: uid == currentUid ? const Text('當前畫面顯示中', style: TextStyle(color: Colors.white54, fontSize: 12)) : null,
+                                  // 右側統一放一個「匯出」的小圖示，暗示點擊行為
+                                  trailing: const Icon(Icons.upload_file, color: Colors.white54, size: 18),
+                                  onTap: () => Navigator.pop(dialogContext, uid),
+                                )).toList(),
+                              ),
+                            ),
+                          );
+
+                          // 3. 取得玩家選擇的 UID 並執行匯出
+                          if (selectedUid != null && context.mounted) {
+                            await BackupService.exportBackupJson(context, selectedUid);
+                          }
+                        } else {
+                          // 若只有單一帳號，直接匯出
+                          await BackupService.exportBackupJson(context, currentUid);
+                        }
                       },
                     ),
                     ListTile(
                       leading: const Icon(Icons.folder_open, color: Color(0xFF34D399)),
                       title: const Text('導入歷史備份 (JSON)', style: TextStyle(color: Colors.white70, fontSize: 13)),
-                      onTap: () {
+                      onTap: () async {
+                        // 1. 先關閉外層的這個「備份與管理」設定對話框
                         Navigator.pop(innerContext);
 
-                        BackupService.importBackupFromFile(context, accountUids, (newUid) async {
+                        // 2. 加上 await，等待玩家在「預覽對話框」中做出選擇並匯入完成
+                        await BackupService.importBackupFromFile(context, currentUid, accountUids, (newUid) async {
                           mainSetState(() { currentUid = newUid; });
                           await _loadLocalDataForCurrentUid();
                         });

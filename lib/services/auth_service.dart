@@ -9,7 +9,6 @@ class AuthService {
     "Referer": "https://user.gryphline.com/",
   };
 
-  /// 處理從網頁複製的 JSON 格式，提取純淨 token
   static String extractCleanToken(String rawStr) {
     final str = rawStr.trim();
     if (str.startsWith("{")) {
@@ -21,15 +20,14 @@ class AuthService {
     return str;
   }
 
-  /// 執行完整的驗證鏈：account_token -> oauth_token -> u8_token
-  static Future<Map<String, String>> getU8Token(String rawInput) async {
+  /// 第一階段：換取中繼碼並提取該帳號下「所有伺服器」的角色清單
+  static Future<Map<String, dynamic>> getAccountRoles(String rawInput) async {
     final accountToken = extractCleanToken(rawInput);
     final appCodes = ["3dacefa138426cfe", "6eb76d4e13aa36e6", "be36d44aa36bfb5b", "endfield"];
 
     String? workingOauthToken;
     Map<String, dynamic>? bindData;
 
-    // Step 1 & 2: 嘗試換取中繼碼與角色綁定資料
     for (final code in appCodes) {
       for (final grantType in [1, 0]) {
         try {
@@ -45,7 +43,6 @@ class AuthService {
           final oauthVal = grantJson["data"]?["token"] ?? grantJson["data"]?["code"];
           if (oauthVal == null) continue;
 
-          // 驗證綁定狀態
           final bindUri = Uri.parse("https://binding-api-account-prod.gryphline.com/account/binding/v1/binding_list")
               .replace(queryParameters: {"token": oauthVal.toString(), "appCode": "endfield"});
 
@@ -68,47 +65,73 @@ class AuthService {
       throw Exception("無法驗證帳號，請確認您貼上的 Token 是否有效或已過期。");
     }
 
-    // 提取使用者 UID
+    // 展平角色清單：將綁定資料中的所有 roles 獨立提取出來
     final appList = bindData["data"]["list"] as List<dynamic>? ?? [];
-    Map<String, dynamic>? role;
+    List<Map<String, dynamic>> flatRoles = [];
+
     for (final item in appList) {
       final bindingList = item["bindingList"] as List<dynamic>?;
-      if (bindingList != null && bindingList.isNotEmpty) {
-        role = bindingList[0];
-        break;
+      if (bindingList != null) {
+        for (final binding in bindingList) {
+          final uid = binding["uid"]?.toString();
+          if (uid == null) continue;
+
+          final innerRoles = binding["roles"] as List<dynamic>?;
+
+          if (innerRoles != null && innerRoles.isNotEmpty) {
+            // 如果該帳號下有多個伺服器的角色，把它們全部分開打包
+            for (final innerRole in innerRoles) {
+              flatRoles.add({
+                "uid": uid,
+                "serverId": innerRole["serverId"]?.toString() ?? "2",
+                "serverName": innerRole["serverName"]?.toString() ?? "未知伺服器",
+                "nickName": innerRole["nickName"]?.toString() ?? "未知角色",
+              });
+            }
+          } else {
+            // 防呆機制：如果沒有 innerRoles 陣列，退回使用外層資料
+            flatRoles.add({
+              "uid": uid,
+              "serverId": binding["channelMasterId"]?.toString() ?? binding["serverId"]?.toString() ?? "2",
+              "serverName": binding["channelName"]?.toString() ?? "未知伺服器",
+              "nickName": binding["nickName"]?.toString() ?? "未知角色",
+            });
+          }
+        }
       }
     }
 
-    if (role == null) {
-      throw Exception("驗證成功，但該帳號內未找到《終末地》角色資料！");
+    if (flatRoles.isEmpty) {
+      throw Exception("驗證成功，但該帳號內未找到任何《終末地》角色資料！");
     }
 
-    final uid = role["uid"].toString();
+    return {
+      "oauthToken": workingOauthToken,
+      "roles": flatRoles,
+    };
+  }
 
-    // Step 3: 換取最終的 u8_token
+  /// 第二階段：透過使用者選定的 uid 與中繼碼，換取最終的抽卡金鑰
+  static Future<String> fetchU8Token(String uid, String oauthToken) async {
     final u8Uri = Uri.parse("https://binding-api-account-prod.gryphline.com/account/binding/v1/u8_token_by_uid");
 
     var u8Res = await http.post(
       u8Uri,
       headers: {...baseHeaders, "Content-Type": "application/json"},
-      body: jsonEncode({"uid": uid, "token": workingOauthToken}),
+      body: jsonEncode({"uid": uid, "token": oauthToken}),
     );
     var u8Json = jsonDecode(u8Res.body);
 
-    // POST 失敗時降級嘗試 GET
     if (u8Json["status"] != 0) {
       u8Res = await http.get(
-        u8Uri.replace(queryParameters: {"uid": uid, "token": workingOauthToken}),
+        u8Uri.replace(queryParameters: {"uid": uid, "token": oauthToken}),
         headers: baseHeaders,
       );
       u8Json = jsonDecode(u8Res.body);
     }
 
     if (u8Json["status"] == 0 && u8Json["data"] != null) {
-      return {
-        "token": u8Json["data"]["token"].toString(),
-        "uid": uid
-      };
+      return u8Json["data"]["token"].toString();
     }
 
     throw Exception("獲取抽卡金鑰失敗：${u8Json['msg'] ?? '未知錯誤'}");

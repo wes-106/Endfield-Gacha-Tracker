@@ -68,10 +68,11 @@ class BackupService {
   }
 
   // ==========================================================================
-  // 2. 導入資料備份 (開啟系統檔案總管選取 JSON 檔)
+  // 2. 導入資料備份 (開啟系統檔案總管選取 JSON 檔並顯示預覽)
   // ==========================================================================
   static Future<void> importBackupFromFile(
       BuildContext context,
+      String? currentUid, // [新增] 傳入目前的 UID 用於防呆比對
       List<String> accountUids,
       Function(String newUid) onSuccess,
       ) async {
@@ -88,32 +89,174 @@ class BackupService {
       File file = File(pickedFile.path!);
       String rawJson = await file.readAsString();
 
-      if (rawJson.isEmpty) return;
+      if (rawJson.isEmpty) throw Exception('備份檔為空');
 
-      final Map<String, dynamic> backupData = jsonDecode(rawJson);
-      final String uid = backupData['uid'];
+      // 嚴格格式驗證：防止盲目信任 JSON 結構
+      final dynamic decodedJson = jsonDecode(rawJson);
+      if (decodedJson is! Map<String, dynamic>) {
+        throw Exception('檔案格式錯誤：不是有效的 JSON 字典結構');
+      }
+
+      final Map<String, dynamic> backupData = decodedJson;
+
+      if (!backupData.containsKey('uid') || backupData['uid'] == null || backupData['uid'].toString().trim().isEmpty) {
+        throw Exception('無效的備份格式：缺少帳號 UID');
+      }
+      if (!backupData.containsKey('records') || backupData['records'] is! Map) {
+        throw Exception('無效的備份格式：缺少尋訪紀錄 (records)');
+      }
+
+      // 如果匯入的備份 UID 沒有帶伺服器後綴，自動為其補上 _2 (亞服)
+      final String rawBackupUid = backupData['uid'].toString();
+      final String uid = rawBackupUid.contains('_') ? rawBackupUid : '${rawBackupUid}_2';
       final Map<String, dynamic> records = backupData['records'];
+
+      // 解析備份時間
+      String displayTime = '未知時間';
+      final String rawTime = backupData['exportTime']?.toString() ?? '';
+      if (rawTime.isNotEmpty) {
+        try {
+          final dt = DateTime.parse(rawTime).toLocal();
+          displayTime = '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+        } catch (_) {}
+      }
+
+      // 嚴格型別驗證與卡池解析
+      int totalRecords = 0;
+      final Map<String, List<dynamic>> parsedPools = {};
 
       List<Map<String, dynamic>> safeCast(dynamic source) {
         if (source == null) return [];
-        return (source as List).map((item) => Map<String, dynamic>.from(item as Map)).toList();
+        if (source is! List) throw Exception('卡池資料格式錯誤：預期為陣列 (List)');
+        return source.map((item) {
+          if (item is! Map) throw Exception('單筆抽卡紀錄格式錯誤：預期為字典 (Map)');
+          return Map<String, dynamic>.from(item);
+        }).toList();
       }
 
-      if (records.containsKey('pool_special')) {
-        await LocalStorage.saveRecords(uid, 'pool_special', safeCast(records['pool_special']));
+      records.forEach((key, value) {
+        final list = safeCast(value);
+        parsedPools[key] = list;
+        totalRecords += list.length;
+      });
+
+      if (totalRecords == 0) throw Exception('此備份檔內無任何尋訪紀錄');
+
+      // 統計本機資料庫中目前的總紀錄數
+      int currentDbTotal = 0;
+      for (var pool in ['pool_special', 'pool_refactor', 'pool_standard', 'pool_weapon', 'pool_beginner']) {
+        final existingList = await LocalStorage.loadRecords(uid, pool);
+        currentDbTotal += existingList.length;
       }
-      if (records.containsKey('pool_refactor')) {
-        await LocalStorage.saveRecords(uid, 'pool_refactor', safeCast(records['pool_refactor']));
+
+      // 判斷是否發生 UID 錯置 (要匯入的備份 UID 與當前畫面 UID 不符)
+      final bool isUidMismatch = (currentUid != null && currentUid != uid);
+
+      if (!context.mounted) return;
+
+      // 彈出預覽對話框詢問玩家
+      final bool? isOverwrite = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          backgroundColor: const Color(0xFF181920),
+          title: const Text('📥 匯入備份預覽', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // [新增] UID 錯置防呆警告 UI
+              if (isUidMismatch) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0x33EF4444),
+                    border: Border.all(color: const Color(0xFFEF4444)),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444), size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '警告：此備份檔的帳號 ($uid) 與您目前畫面上的帳號 ($currentUid) 不同！匯入後將自動切換至該帳號。',
+                          style: const TextStyle(color: Color(0xFFFCA5A5), fontSize: 13, height: 1.4),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              Text('目標帳號：$uid', style: const TextStyle(color: Colors.white, fontSize: 16)),
+              Text('備份時間：$displayTime', style: const TextStyle(color: Colors.white70)),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(color: const Color(0xFF1E2029), borderRadius: BorderRadius.circular(8)),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('本機現有紀錄：', style: TextStyle(color: Colors.white70)),
+                        Text('$currentDbTotal 筆', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const Divider(color: Colors.white12, height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('備份檔紀錄數：', style: TextStyle(color: Colors.white70)),
+                        Text('$totalRecords 筆', style: const TextStyle(color: Color(0xFFFFCC00), fontWeight: FontWeight.bold, fontSize: 16)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 12),
+                child: Divider(color: Colors.white24),
+              ),
+              const Text('請選擇匯入模式：', style: TextStyle(color: Color(0xFFFFCC00), fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              const Text('➕ 合併紀錄：\n保留現有資料，僅補入缺失的紀錄。', style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.4)),
+              const SizedBox(height: 8),
+              const Text('⚠️ 完全覆蓋：\n刪除此帳號目前的紀錄，將資料庫還原至與此備份檔完全相同的狀態。', style: TextStyle(color: Color(0xFFFCA5A5), fontSize: 13, height: 1.4)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, null),
+              child: const Text('取消', style: TextStyle(color: Colors.white54)),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.white),
+              label: const Text('合併', style: TextStyle(color: Colors.white)),
+              onPressed: () => Navigator.pop(dialogContext, false),
+            ),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFEF4444)),
+              icon: const Icon(Icons.warning_amber_rounded, size: 18, color: Colors.white),
+              label: const Text('覆蓋', style: TextStyle(color: Colors.white)),
+              onPressed: () => Navigator.pop(dialogContext, true),
+            ),
+          ],
+        ),
+      );
+
+      if (isOverwrite == null) return;
+
+      // 匯入前自動備份現有資料 (如果該 UID 本來就有資料的話)
+      if (currentDbTotal > 0) {
+        await saveAutoBackup(uid);
       }
-      if (records.containsKey('pool_standard')) {
-        await LocalStorage.saveRecords(uid, 'pool_standard', safeCast(records['pool_standard']));
-      }
-      if (records.containsKey('pool_weapon')) {
-        await LocalStorage.saveRecords(uid, 'pool_weapon', safeCast(records['pool_weapon']));
-      }
-      if (records.containsKey('pool_beginner')) {
-        await LocalStorage.saveRecords(uid, 'pool_beginner', safeCast(records['pool_beginner']));
-      }
+
+      // 呼叫原子性匯入方法
+      await LocalStorage.importBackupData(uid, parsedPools, isOverwrite: isOverwrite);
 
       if (!accountUids.contains(uid)) {
         accountUids.add(uid);
@@ -121,12 +264,17 @@ class BackupService {
 
       await onSuccess(uid);
 
+      if (!context.mounted) return;
       messenger.showSnackBar(
-        const SnackBar(content: Text('🎉 歷史備份還原成功！'), backgroundColor: Color(0xFF10B981)),
+        SnackBar(
+            content: Text(isOverwrite ? '🎉 備份還原成功 (已完全覆蓋)！' : '🎉 備份匯入成功 (已合併紀錄)！'),
+            backgroundColor: const Color(0xFF10B981)
+        ),
       );
     } catch (e) {
+      if (!context.mounted) return;
       messenger.showSnackBar(
-        SnackBar(content: Text('❌ 檔案讀取或解析失敗：$e'), backgroundColor: const Color(0xFFEF4444)),
+        SnackBar(content: Text('❌ 檔案讀取或匯入失敗：\n$e'), backgroundColor: const Color(0xFFEF4444)),
       );
     }
   }

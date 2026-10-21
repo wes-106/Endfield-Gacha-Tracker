@@ -13,7 +13,7 @@ class AppDrawer extends StatelessWidget {
   final VoidCallback onExportPressed;
   final VoidCallback onSyncPressed;
   final Function(bool) onAutoBackupChanged;
-  final VoidCallback onReloadRequested; // 用於還原備份後刷新主畫面
+  final VoidCallback onReloadRequested;
 
   const AppDrawer({
     super.key,
@@ -64,21 +64,19 @@ class AppDrawer extends StatelessWidget {
                     '切換帳號',
                     style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.bold),
                   ),
-
-                  // 手機版 (APK) 側邊欄：多帳號切換下拉選單
                   if (accountUids.isNotEmpty)
                     PopupMenuButton<String>(
                       initialValue: currentUid,
                       tooltip: '',
                       position: PopupMenuPosition.under,
-                      constraints: const BoxConstraints(minWidth: 140, maxWidth: 140),
+                      constraints: const BoxConstraints(minWidth: 170, maxWidth: 170),
                       color: const Color(0xFF2A2D36),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                         side: const BorderSide(color: Colors.white12),
                       ),
                       child: Container(
-                        width: 140,
+                        width: 170,
                         height: 30,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
@@ -133,31 +131,70 @@ class AppDrawer extends StatelessWidget {
           ListTile(
             leading: const Icon(Icons.upload_file, color: Color(0xFF60A5FA)),
             title: const Text('匯出資料備份 (JSON)', style: TextStyle(color: Colors.white70, fontSize: 13)),
-            onTap: () {
-              Navigator.pop(context);
-              BackupService.exportBackupJson(context, currentUid);
+            onTap: () async {
+              // 如果有超過一個帳號，彈出選擇對話框；否則直接匯出
+              if (accountUids.length > 1) {
+                final selectedUid = await showDialog<String>(
+                  context: context,
+                  builder: (dialogContext) => AlertDialog(
+                    backgroundColor: const Color(0xFF181920),
+                    title: const Text('請點選要匯出的帳號', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                    content: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: accountUids.map((uid) => ListTile(
+                        leading: const Icon(Icons.person, color: Color(0xFF60A5FA)),
+                        title: Text(
+                            'UID: $uid',
+                            style: TextStyle(
+                              // 當前帳號用特別的顏色標註
+                                color: uid == currentUid ? const Color(0xFFFFCC00) : Colors.white,
+                                fontWeight: uid == currentUid ? FontWeight.bold : FontWeight.normal
+                            )
+                        ),
+                        // 用副標題提示哪個是當前帳號
+                        subtitle: uid == currentUid ? const Text('當前畫面顯示中', style: TextStyle(color: Colors.white54, fontSize: 12)) : null,
+                        // 右側統一放一個「匯出」的小圖示，暗示點擊行為
+                        trailing: const Icon(Icons.upload_file, color: Colors.white54, size: 18),
+                        onTap: () => Navigator.pop(dialogContext, uid),
+                      )).toList(),
+                    ),
+                  ),
+                );
+                if (selectedUid != null && context.mounted) {
+                  await BackupService.exportBackupJson(context, selectedUid);
+                  if (context.mounted) Navigator.pop(context); // 執行完再關閉側邊欄
+                }
+              } else {
+                await BackupService.exportBackupJson(context, currentUid);
+                if (context.mounted) Navigator.pop(context);
+              }
             },
           ),
           ListTile(
             leading: const Icon(Icons.folder_open, color: Color(0xFF34D399)),
             title: const Text('導入歷史備份 (JSON)', style: TextStyle(color: Colors.white70, fontSize: 13)),
-            onTap: () {
-              Navigator.pop(context);
-              BackupService.importBackupFromFile(context, accountUids, (newUid) {
+            onTap: () async {
+              // 【修復 Bug】移除先 pop 的動作，保持 context 存活，直到 await 結束
+              await BackupService.importBackupFromFile(context, currentUid, accountUids, (newUid) {
                 if (newUid != currentUid) {
                   onUidChanged(newUid);
                 } else {
                   onReloadRequested();
                 }
               });
+
+              // 全部讀取、驗證、寫入完畢後，安全地關閉側邊欄
+              if (context.mounted) {
+                Navigator.pop(context);
+              }
             },
           ),
           ListTile(
             leading: const Icon(Icons.restore, color: Color(0xFFF59E0B)),
             title: const Text('從最新的自動備份還原', style: TextStyle(color: Colors.white70, fontSize: 13)),
-            onTap: () {
-              Navigator.pop(context);
-              BackupService.restoreFromAutoBackup(context, currentUid, () => onReloadRequested());
+            onTap: () async {
+              await BackupService.restoreFromAutoBackup(context, currentUid, () => onReloadRequested());
+              if (context.mounted) Navigator.pop(context);
             },
           ),
           SwitchListTile(
@@ -186,7 +223,6 @@ class AppDrawer extends StatelessWidget {
             leading: const Icon(Icons.info_outline, color: Colors.white54),
             title: const Text('免責聲明與使用條款', style: TextStyle(color: Colors.white54, fontSize: 13)),
             onTap: () {
-              Navigator.pop(context);
               InfoDialogs.showDisclaimerDialog(context);
             },
           ),

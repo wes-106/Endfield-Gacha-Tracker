@@ -6,7 +6,7 @@ class GachaApiService {
   final String _baseUrl = 'ef-webview.gryphline.com';
 
   /// 提取所有角色卡池的原始資料並直接分類
-  Future<Map<String, List<dynamic>>> fetchAllCharacters(String token, Set<String> knownSeqIds) async {
+  Future<Map<String, List<dynamic>>> fetchAllCharacters(String token, String serverId, Set<String> knownSeqIds) async {
     Map<String, List<dynamic>> categorizedRecords = {
       'Special': [], 'Refactor': [], 'Standard': [], 'Beginner': []
     };
@@ -17,7 +17,7 @@ class GachaApiService {
 
       while (hasMore) {
         Map<String, String> params = {
-          'server_id': '2',
+          'server_id': serverId,
           'pool_type': poolType,
           'lang': 'zh-tw',
           'token': token,
@@ -30,11 +30,13 @@ class GachaApiService {
           final response = await http.get(uri);
           if (response.statusCode == 200) {
             final data = json.decode(response.body);
-            if (data['code'] != 0) break;
+
+            if (data['code'] != 0) {
+              throw Exception(data['msg'] ?? data['message'] ?? 'API 回傳錯誤 (Code: ${data['code']})');
+            }
 
             final list = data['data']['list'] as List<dynamic>? ?? [];
 
-            // 若回傳空陣列，代表該池未曾抽取或已達末端，直接中斷請求
             if (list.isEmpty) break;
 
             bool hitLocalRecord = false;
@@ -50,7 +52,6 @@ class GachaApiService {
 
             categorizedRecords[category]!.addAll(newRecords);
 
-            // 若遇到已存在本地的資料，停止後續分頁請求
             if (hitLocalRecord) break;
 
             hasMore = data['data']['hasMore'] ?? false;
@@ -59,11 +60,11 @@ class GachaApiService {
               await Future.delayed(const Duration(milliseconds: 150));
             }
           } else {
-            hasMore = false;
+            throw Exception('HTTP 狀態碼錯誤: ${response.statusCode}');
           }
         } catch (e) {
           debugPrint("抓取角色池 $poolType 發生錯誤: $e");
-          break;
+          throw Exception('抓取角色池失敗: $e');
         }
       }
     }
@@ -79,19 +80,21 @@ class GachaApiService {
   }
 
   /// 提取所有武器卡池的原始資料
-  Future<List<dynamic>> fetchWeaponRecords(String token, Set<String> knownSeqIds) async {
+  Future<List<dynamic>> fetchWeaponRecords(String token, String serverId, Set<String> knownSeqIds) async {
     List<dynamic> allRecords = [];
 
     final poolUri = Uri.https(_baseUrl, '/api/record/weapon/pool', {
-      'server_id': '2', 'lang': 'zh-tw', 'token': token,
+      'server_id': serverId,
+      'lang': 'zh-tw',
+      'token': token,
     });
 
     try {
       final poolResponse = await http.get(poolUri);
-      if (poolResponse.statusCode != 200) return allRecords;
+      if (poolResponse.statusCode != 200) throw Exception('HTTP 狀態碼錯誤: ${poolResponse.statusCode}');
 
       final poolData = json.decode(poolResponse.body);
-      if (poolData['code'] != 0) return allRecords;
+      if (poolData['code'] != 0) throw Exception(poolData['message'] ?? 'API 回傳錯誤');
 
       final List<dynamic> weaponPools = poolData['data'] ?? [];
 
@@ -102,7 +105,7 @@ class GachaApiService {
 
         while (hasMore) {
           Map<String, String> params = {
-            'server_id': '2',
+            'server_id': serverId,
             'lang': 'zh-tw',
             'token': token,
             'pool_id': poolId,
@@ -114,11 +117,10 @@ class GachaApiService {
 
           if (recordResponse.statusCode == 200) {
             final recordData = json.decode(recordResponse.body);
-            if (recordData['code'] != 0) break;
+            if (recordData['code'] != 0) throw Exception(recordData['message'] ?? 'API 回傳錯誤');
 
             final currentList = recordData['data']['list'] as List<dynamic>? ?? [];
 
-            // 若該武器池無抽取紀錄，跳至下一個子卡池
             if (currentList.isEmpty) break;
 
             bool hitLocalRecord = false;
@@ -142,12 +144,13 @@ class GachaApiService {
               await Future.delayed(const Duration(milliseconds: 150));
             }
           } else {
-            hasMore = false;
+            throw Exception('HTTP 狀態碼錯誤: ${recordResponse.statusCode}');
           }
         }
       }
     } catch (e) {
       debugPrint("武器池抓取發生錯誤: $e");
+      throw Exception('抓取武器池失敗: $e');
     }
 
     return allRecords;

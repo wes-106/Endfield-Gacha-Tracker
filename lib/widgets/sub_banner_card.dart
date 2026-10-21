@@ -398,8 +398,10 @@ class SubBannerCard extends StatelessWidget {
           // 4. 右側狀態小標籤
           if (item.isFree)
             _buildTagBadge('免', const Color(0xFF3B82F6))
+          else if (item.isUp == null)
+            _buildTagBadge('未知', Colors.white54) // [新增] 未知狀態顯示灰色
           else
-            _buildTagBadge(item.isUp ? 'UP' : '歪', item.isUp ? const Color(0xFFFFCC00) : const Color(0xFFEF4444)),
+            _buildTagBadge(item.isUp! ? 'UP' : '歪', item.isUp! ? const Color(0xFFFFCC00) : const Color(0xFFEF4444)),
         ],
       ),
     );

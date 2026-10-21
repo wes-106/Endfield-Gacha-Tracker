@@ -67,9 +67,11 @@ List<SubBannerGroup> parseRawDataToModels(
       int currentTotal = poolTotalDrawCount[poolName]!;
       bool isFreeTenPull = !isWeaponPool && (currentTotal >= 31 && currentTotal <= 40);
 
-      // 檢查是否為 UP 對象 (若對照表無資料則預設為 true 避免誤判)
-      List<String> upList = bannerUpMap[poolName] ?? [];
-      bool isTargetUp = upList.isEmpty ? true : upList.contains(name);
+      // 嚴謹判斷是否為 UP 對象 (若對照表無該卡池資料，設為 null 代表未知)
+      bool? isTargetUp;
+      if (bannerUpMap.containsKey(poolName) && bannerUpMap[poolName]!.isNotEmpty) {
+        isTargetUp = bannerUpMap[poolName]!.contains(name);
+      }
 
       if (isFreeTenPull) {
         poolFreePullsCount[poolName] = poolFreePullsCount[poolName]! + 1;
