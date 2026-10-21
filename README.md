@@ -147,4 +147,4 @@ Endfield-Gacha-Tracker/
 * **Flutter 框架與官方套件**：(見 BSD-3-Clause 授權說明)
 * **Google Material Symbols**：相關圖標資源 (見 Apache-2.0 授權說明)
 
-相關協議副本置於LICENSE資料夾中。
+相關協議副本置於LICENSES資料夾中。
