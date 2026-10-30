@@ -6,6 +6,8 @@ class ExportDialog extends StatefulWidget {
   final bool initialShowTime;
   final bool initialShowAccount;
   final String initialAccountName;
+  final Map<String, bool> exportConfig;
+  final Function(Map<String, bool>) onConfigSaved;
   // 導出時將玩家選好的設定回傳給主畫面
   final Function(List<String> toExport, bool showTime, bool showAccount, String accountName) onExport;
 
@@ -16,6 +18,8 @@ class ExportDialog extends StatefulWidget {
     required this.initialShowTime,
     required this.initialShowAccount,
     required this.initialAccountName,
+    required this.exportConfig,
+    required this.onConfigSaved,
     required this.onExport,
   });
 
@@ -56,6 +60,12 @@ class _ExportDialogState extends State<ExportDialog> {
           const Icon(Icons.image, color: Color(0xFF60A5FA), size: 20),
           const SizedBox(width: 8),
           Text('導出 ${widget.poolTitle} 紀錄', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          const Spacer(),
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.white54),
+            tooltip: '圖表顯示設定',
+            onPressed: () => _showAdvancedSettings(context),
+          ),
         ],
       ),
       content: SizedBox(
@@ -164,6 +174,76 @@ class _ExportDialogState extends State<ExportDialog> {
           child: const Text('生成圖片', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         ),
       ],
+    );
+  }
+  // 導出圖片的標籤設定
+  void _showAdvancedSettings(BuildContext parentContext) {
+    Map<String, bool> tempConfig = Map.from(widget.exportConfig);
+
+    showDialog(
+      context: parentContext,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E2029),
+              title: const Text('圖表顯示設定', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              content: SizedBox(
+                width: 300,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SwitchListTile(
+                      title: const Text('顯示 UP/歪明細', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      value: tempConfig['showUpOff'] ?? true,
+                      activeThumbColor: const Color(0xFFFFCC00),
+                      onChanged: (val) => setModalState(() => tempConfig['showUpOff'] = val),
+                    ),
+                    SwitchListTile(
+                      title: const Text('顯示常規平均 (抽/個)', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      value: tempConfig['showAvg'] ?? true,
+                      activeThumbColor: const Color(0xFFFFCC00),
+                      onChanged: (val) => setModalState(() => tempConfig['showAvg'] = val),
+                    ),
+                    SwitchListTile(
+                      title: const Text('顯示常規彩率 (%)', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      value: tempConfig['showRate'] ?? true,
+                      activeThumbColor: const Color(0xFFFFCC00),
+                      onChanged: (val) => setModalState(() => tempConfig['showRate'] = val),
+                    ),
+                    SwitchListTile(
+                      title: const Text('顯示稀有度分布圖', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      value: tempConfig['showRarityBar'] ?? true,
+                      activeThumbColor: const Color(0xFFFFCC00),
+                      onChanged: (val) => setModalState(() => tempConfig['showRarityBar'] = val),
+                    ),
+                    SwitchListTile(
+                      title: const Text('包含「階段免費尋訪」', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      value: tempConfig['showFreePulls'] ?? true,
+                      activeThumbColor: const Color(0xFFFFCC00),
+                      onChanged: (val) => setModalState(() => tempConfig['showFreePulls'] = val),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('取消', style: TextStyle(color: Colors.white54)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFCC00)),
+                  onPressed: () {
+                    widget.onConfigSaved(tempConfig);
+                    Navigator.pop(context);
+                  },
+                  child: const Text('套用', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

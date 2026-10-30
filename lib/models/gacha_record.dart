@@ -36,6 +36,7 @@ class SixStarPityItem {
   final String dateStr;
   final bool isMilestone; // 是否為系統贈送里程碑 (240n 潛能 / 180+160n 武器)
   final bool isFree;      // 是否屬於角色池 31~40 抽免費區間
+  final int? freePhase;   // 新增：記錄是 30, 60 還是 90 抽的免費十連
 
   SixStarPityItem({
     required this.name,
@@ -44,12 +45,14 @@ class SixStarPityItem {
     required this.dateStr,
     this.isMilestone = false,
     this.isFree = false,
+    this.freePhase,
   });
 }
 
 /// 單一子卡池區塊模型
 class SubBannerGroup {
   final String bannerName;     // 子卡池名稱
+  final String poolCategory;   // 新增：記錄卡池大分類
   final String upTargetName;   // 當期 UP 幹員/武器名稱
   final String periodStr;      // 卡池期間或狀態標籤
   final int totalPulls;        // 該池帳面累計總抽數 (含免費 10 抽)
@@ -60,9 +63,15 @@ class SubBannerGroup {
   final int freePullsCount;    // 已觸發的免費抽數 (0 ~ 10)
   final List<SixStarPityItem> sixStars;       // 常規 6★ 與里程碑列表
   final List<SixStarPityItem> free10SixStars; // 專屬 31~40 抽免費 6★ 列表
+  // 新增：稀有度統計 (4★ 與 5★)
+  final int regularFourStarCount;
+  final int regularFiveStarCount;
+  final int freeFourStarCount;
+  final int freeFiveStarCount;
 
   SubBannerGroup({
     required this.bannerName,
+    required this.poolCategory,
     required this.upTargetName,
     required this.periodStr,
     required this.totalPulls,
@@ -73,20 +82,51 @@ class SubBannerGroup {
     this.freePullsCount = 0,
     required this.sixStars,
     this.free10SixStars = const [],
+    this.regularFourStarCount = 0,
+    this.regularFiveStarCount = 0,
+    this.freeFourStarCount = 0,
+    this.freeFiveStarCount = 0,
   });
 
-  /// 是否已進入 30 抽後的免費 10 抽區間
+  /// 是否已進入免費 10 抽區間
   bool get hasFree10Section => !isWeapon && freePullsCount > 0;
 
-  /// 真實抽出的 6★ 總數 (包含免費抽，排除系統贈送里程碑)
-  int get actualSixStarCount =>
-      sixStars.where((e) => !e.isMilestone).length + free10SixStars.length;
+  // ==========================================
+  // --- 常規抽卡統計 (排除免費與系統贈禮) ---
+  // ==========================================
+  int get regularPulls => effectivePulls;
+  int get regularSixStarCount => sixStars.where((e) => !e.isMilestone).length;
+  int get regularUpCount => sixStars.where((e) => !e.isMilestone && e.isUp == true).length;
+  int get regularOffCount => sixStars.where((e) => !e.isMilestone && e.isUp == false).length;
 
-  /// 平均出彩抽數
-  String get avgPityStr {
-    if (actualSixStarCount == 0) return '-';
+  String get regularAvgStr {
+    if (regularSixStarCount == 0) return '-';
 
-    double avg = totalPulls / actualSixStarCount;
-    return '${avg.toStringAsFixed(1)} 抽';
+    double avgPulls = regularPulls / regularSixStarCount;
+    return '${avgPulls.toStringAsFixed(1)} 抽';
+  }
+
+  // 小視窗顯示用：純彩率
+  String get regularRateStr {
+    if (regularPulls == 0) return '0.00%';
+    return '${((regularSixStarCount / regularPulls) * 100).toStringAsFixed(2)}%';
+  }
+
+  // ==========================================
+  // --- 免費抽卡統計 (階段贈送十連) ---
+  // ==========================================
+  int get freePulls => freePullsCount;
+  int get freeSixStarCount => free10SixStars.length;
+  int get freeUpCount => free10SixStars.where((e) => e.isUp == true).length;
+  int get freeOffCount => free10SixStars.where((e) => e.isUp == false).length;
+
+  String get freeAvgStr {
+    if (freeSixStarCount == 0) return '-';
+    return '${(freePulls / freeSixStarCount).toStringAsFixed(1)} 抽';
+  }
+
+  String get freeRateStr {
+    if (freePulls == 0) return '0.00%';
+    return '${((freeSixStarCount / freePulls) * 100).toStringAsFixed(2)}%';
   }
 }

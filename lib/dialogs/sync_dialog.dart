@@ -6,6 +6,7 @@ import '../services/local_storage.dart';
 import '../services/backup_service.dart';
 import '../services/data_parser.dart';
 import '../models/gacha_record.dart';
+import '../models/pool_config.dart';
 
 class SyncDialog extends StatefulWidget {
   final String? savedAccountToken;
@@ -66,7 +67,6 @@ class _SyncDialogState extends State<SyncDialog> {
     // 我們將本地儲存用的 UID 加上伺服器代號後綴 (例如 123456789_2)
     final String localDbUid = '${realUid}_$serverId';
 
-    // UI 開始轉圈圈，並關閉對話框
     Navigator.pop(context);
     onSyncingChanged(true);
     onStatusChanged('正在獲取伺服器授權...');
@@ -76,52 +76,43 @@ class _SyncDialogState extends State<SyncDialog> {
       final finalU8Token = await AuthService.fetchU8Token(realUid, oauthToken);
 
       // 下面所有 LocalStorage 的讀取與寫入，全部改用 localDbUid
-      final localSpecial = await LocalStorage.loadRecords(localDbUid, 'pool_special');
-      final localRefactor = await LocalStorage.loadRecords(localDbUid, 'pool_refactor');
-      final localStandard = await LocalStorage.loadRecords(localDbUid, 'pool_standard');
-      final localWeapon = await LocalStorage.loadRecords(localDbUid, 'pool_weapon');
-      final localBeginner = await LocalStorage.loadRecords(localDbUid, 'pool_beginner');
+      final Map<String, List<Map<String, dynamic>>> localDataMap = {};
+      final Set<String> knownSeqIds = {};
 
-      Set<String> knownSeqIds = {};
-      for (var list in [localSpecial, localRefactor, localStandard, localWeapon, localBeginner]) {
-        for (var r in list) { knownSeqIds.add(r['seqId']?.toString() ?? ''); }
+      for (final config in appPoolConfigs) {
+        final data = await LocalStorage.loadRecords(localDbUid, config.dbKey);
+        localDataMap[config.uiKey] = List<Map<String, dynamic>>.from(data);
+        for (var r in data) {
+          knownSeqIds.add(r['seqId']?.toString() ?? '');
+        }
       }
 
       onStatusChanged('正在檢查角色卡池新紀錄...');
       final charRecordsMap = await _apiService.fetchAllCharacters(finalU8Token, serverId, knownSeqIds);
 
-      final mergedSpecial = LocalStorage.mergeRecords(localSpecial, charRecordsMap['Special'] ?? []);
-      await LocalStorage.saveRecords(localDbUid, 'pool_special', mergedSpecial);
+      onStatusChanged('資料整理中...');
+      final Map<String, List<SubBannerGroup>> newPools = {};
 
-      final mergedRefactor = LocalStorage.mergeRecords(localRefactor, charRecordsMap['Refactor'] ?? []);
-      await LocalStorage.saveRecords(localDbUid, 'pool_refactor', mergedRefactor);
+      // 處理 4 種角色池
+      for (final config in appPoolConfigs.where((c) => !c.isWeapon)) {
+        final merged = LocalStorage.mergeRecords(localDataMap[config.uiKey]!, charRecordsMap[config.uiKey] ?? []);
+        await LocalStorage.saveRecords(localDbUid, config.dbKey, merged);
+        newPools[config.uiKey] = parseRawDataToModels(
+          merged,
+          bannerUpMap,
+          isWeaponPool: config.isWeapon,
+          poolCategory: config.uiKey, // 新增傳入卡池分類名稱
+        );
+      }
 
-      final mergedStandard = LocalStorage.mergeRecords(localStandard, charRecordsMap['Standard'] ?? []);
-      await LocalStorage.saveRecords(localDbUid, 'pool_standard', mergedStandard);
-
-      final mergedBeginner = LocalStorage.mergeRecords(localBeginner, charRecordsMap['Beginner'] ?? []);
-      await LocalStorage.saveRecords(localDbUid, 'pool_beginner', mergedBeginner);
-
-      final parsedSpecial = parseRawDataToModels(mergedSpecial, bannerUpMap, isWeaponPool: false);
-      final parsedRefactor = parseRawDataToModels(mergedRefactor, bannerUpMap, isWeaponPool: false);
-      final parsedStandard = parseRawDataToModels(mergedStandard, bannerUpMap, isWeaponPool: false);
-      final parsedBeginner = parseRawDataToModels(mergedBeginner, bannerUpMap, isWeaponPool: false);
-
+      // 處理武器池
       onStatusChanged('角色紀錄完成！\n正在檢查武器卡池新紀錄...');
       final rawWeaponRecords = await _apiService.fetchWeaponRecords(finalU8Token, serverId, knownSeqIds);
 
-      final mergedWeapon = LocalStorage.mergeRecords(localWeapon, rawWeaponRecords);
-      await LocalStorage.saveRecords(localDbUid, 'pool_weapon', mergedWeapon);
-      final parsedWeaponBanners = parseRawDataToModels(mergedWeapon, bannerUpMap, isWeaponPool: true);
-
-      onStatusChanged('資料整理中...');
-      final Map<String, List<SubBannerGroup>> newPools = {
-        'Special': parsedSpecial,
-        'Refactor': parsedRefactor,
-        'Standard': parsedStandard,
-        'Weapon': parsedWeaponBanners,
-        'Beginner': parsedBeginner,
-      };
+      final weaponConfig = appPoolConfigs.firstWhere((c) => c.isWeapon);
+      final mergedWeapon = LocalStorage.mergeRecords(localDataMap[weaponConfig.uiKey]!, rawWeaponRecords);
+      await LocalStorage.saveRecords(localDbUid, weaponConfig.dbKey, mergedWeapon);
+      newPools[weaponConfig.uiKey] = parseRawDataToModels(mergedWeapon, bannerUpMap, isWeaponPool: true);
 
       bool backupSuccess = true;
       if (autoBackupEnabled) {
@@ -185,14 +176,16 @@ class _SyncDialogState extends State<SyncDialog> {
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: Colors.white12),
                 ),
-                child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: _availableRoles.length,
-                  separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.white12),
+                // 新增 Material 包裹 ListView，並設定顏色為透明
+                child: Material(
+                  color: Colors.transparent,
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: _availableRoles.length,
+                    separatorBuilder: (context, index) => const Divider(height: 1, color: Colors.white12),
                     itemBuilder: (context, index) {
                       final roleData = _availableRoles[index];
 
-                      // 直接讀取展平後的資料
                       final serverName = roleData['serverName']?.toString() ?? '未知伺服器';
                       final nickName = roleData['nickName']?.toString() ?? '未知角色';
                       final uid = roleData['uid']?.toString() ?? '未知';
@@ -206,6 +199,7 @@ class _SyncDialogState extends State<SyncDialog> {
                         onTap: () => _startFullSync(roleData, _workingOauthToken!),
                       );
                     },
+                  ),
                 ),
               ),
             ] else ...[
@@ -224,7 +218,7 @@ class _SyncDialogState extends State<SyncDialog> {
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        '請注意：本工具目前僅適用於「終末地國際服 (Global)」，不支援陸服或 B 服帳號資料解析。',
+                        '請注意：本工具目前僅適用於「終末地國際服 (Global)」，不支援陸服帳號資料解析。',
                         style: TextStyle(color: Color(0xFFFCA5A5), fontSize: 12, fontWeight: FontWeight.bold, height: 1.4),
                       ),
                     ),

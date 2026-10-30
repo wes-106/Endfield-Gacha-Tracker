@@ -11,6 +11,7 @@ import 'package:image_gallery_saver_plus/image_gallery_saver_plus.dart';
 // 匯入專案模組與服務
 // ============================================================================
 import 'models/gacha_record.dart';
+import 'models/pool_config.dart';
 import 'services/local_storage.dart';
 import 'services/data_parser.dart';
 import 'services/backup_service.dart';
@@ -79,6 +80,16 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
   // 自動備份開關
   bool _autoBackupEnabled = false;
 
+  // 導出圖片的個性化設定
+  Map<String, bool> _exportBadgeConfig = {
+    'showUpOff': true,
+    'showAvg': true,
+    'showRate': true,
+    'showRarityBar': true,
+    'showFreePulls': true,
+  };
+  Map<String, String> _savedAccountNames = {};
+
   // 圖片 CDN 與卡池 UP 對照字典
   Map<String, String> characterAvatarMap = {};
   Map<String, String> weaponAvatarMap = {};
@@ -130,7 +141,7 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
     return File('${dir.path}${Platform.pathSeparator}app_settings.json');
   }
 
-  /// 讀取本地設定 (改用絕對可靠的實體檔案)
+  /// 讀取本地設定
   Future<void> _loadAutoBackupPreference() async {
     try {
       final file = await _getSettingsFile();
@@ -140,6 +151,14 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
         if (mounted) {
           setState(() {
             _autoBackupEnabled = data['auto_backup_enabled'] ?? false;
+
+            if (data['export_config'] != null) {
+              _exportBadgeConfig = Map<String, bool>.from(data['export_config']);
+            }
+
+            if (data['account_names'] != null) {
+              _savedAccountNames = Map<String, String>.from(data['account_names']);
+            }
           });
         }
       }
@@ -148,7 +167,44 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
     }
   }
 
-  /// 儲存本地設定 (立刻同步寫入實體硬碟，無視 Android 背景砍殺)
+  /// 將輸入的帳號名稱與當前 UID 綁定並存檔
+  Future<void> _saveAccountName(String uid, String name) async {
+    if (name.trim().isEmpty) return;
+
+    setState(() {
+      _savedAccountNames[uid] = name.trim();
+    });
+
+    try {
+      final file = await _getSettingsFile();
+      Map<String, dynamic> data = {};
+      if (await file.exists()) {
+        data = jsonDecode(await file.readAsString());
+      }
+      data['account_names'] = _savedAccountNames;
+      await file.writeAsString(jsonEncode(data));
+    } catch (e) {
+      debugPrint('儲存帳號名稱失敗: $e');
+    }
+  }
+
+  /// 儲存匯出設定
+  Future<void> _saveExportConfig(Map<String, bool> newConfig) async {
+    setState(() => _exportBadgeConfig = newConfig);
+    try {
+      final file = await _getSettingsFile();
+      Map<String, dynamic> data = {};
+      if (await file.exists()) {
+        data = jsonDecode(await file.readAsString());
+      }
+      data['export_config'] = newConfig;
+      await file.writeAsString(jsonEncode(data));
+    } catch (e) {
+      debugPrint('儲存匯出設定失敗: $e');
+    }
+  }
+
+  /// 儲存本地設定
   Future<void> _saveAutoBackupPreference(bool value) async {
     setState(() {
       _autoBackupEnabled = value;
@@ -168,22 +224,29 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
   // ==========================================================================
 
   /// 根據當前選定的 UID 從本地 Isar 資料庫載入紀錄並轉為 UI 模型
+  /// 使用 Future.wait 併發載入所有卡池，提升讀取速度
+  /// 加入 uid 區域變數與 mounted 檢查，防止快速切換帳號導致的非同步覆蓋
   Future<void> _loadLocalDataForCurrentUid() async {
-    if (currentUid == null) return;
-
-    final localSpecial = await LocalStorage.loadRecords(currentUid!, 'pool_special');
-    final localRefactor = await LocalStorage.loadRecords(currentUid!, 'pool_refactor');
-    final localStandard = await LocalStorage.loadRecords(currentUid!, 'pool_standard');
-    final localWeapon = await LocalStorage.loadRecords(currentUid!, 'pool_weapon');
-    final localBeginner = await LocalStorage.loadRecords(currentUid!, 'pool_beginner');
-
-    if (!mounted) return;
+    final uid = currentUid;
+    if (uid == null) return;
+    final newPoolBanners = <String, List<SubBannerGroup>>{};
+    await Future.wait(
+      appPoolConfigs.map((config) async {
+        final localData = await LocalStorage.loadRecords(
+          uid,
+          config.dbKey,
+        );
+        newPoolBanners[config.uiKey] = parseRawDataToModels(
+          localData,
+          bannerUpMap,
+          isWeaponPool: config.isWeapon,
+          poolCategory: config.uiKey,
+        );
+      }),
+    );
+    if (!mounted || currentUid != uid) return;
     setState(() {
-      poolBannersData['Special'] = parseRawDataToModels(localSpecial, bannerUpMap, isWeaponPool: false);
-      poolBannersData['Refactor'] = parseRawDataToModels(localRefactor, bannerUpMap, isWeaponPool: false);
-      poolBannersData['Standard'] = parseRawDataToModels(localStandard, bannerUpMap, isWeaponPool: false);
-      poolBannersData['Weapon'] = parseRawDataToModels(localWeapon, bannerUpMap, isWeaponPool: true);
-      poolBannersData['Beginner'] = parseRawDataToModels(localBeginner, bannerUpMap, isWeaponPool: false);
+      poolBannersData = newPoolBanners;
     });
   }
 
@@ -344,6 +407,8 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
 
     final bannerNames = currentSubBanners.map((b) => b.bannerName).toList();
 
+    final String initialNameForThisUid = currentUid != null ? (_savedAccountNames[currentUid!] ?? '') : '';
+
     showDialog(
       context: context,
       builder: (context) => ExportDialog(
@@ -351,8 +416,13 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
         bannerNames: bannerNames,
         initialShowTime: _exportShowTime,
         initialShowAccount: _exportShowAccount,
-        initialAccountName: _exportAccountName,
+        initialAccountName: initialNameForThisUid,
+        exportConfig: _exportBadgeConfig,
+        onConfigSaved: _saveExportConfig,
         onExport: (toExport, showTime, showAccount, accountName) {
+          if (currentUid != null && showAccount) {
+            _saveAccountName(currentUid!, accountName);
+          }
           _generateAndSaveImage(toExport, showTime, showAccount, accountName);
         },
       ),
@@ -365,8 +435,6 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
   @override
   Widget build(BuildContext context) {
     final currentSubBanners = poolBannersData[selectedPool] ?? [];
-    final categoryTotalPulls = currentSubBanners.fold<int>(0, (sum, b) => sum + b.totalPulls);
-    final categoryTotalSixStars = currentSubBanners.fold<int>(0, (sum, b) => sum + b.actualSixStarCount);
 
     final isMobile = MediaQuery.of(context).size.width < 600;
     final hasAnyData = poolBannersData.values.any((list) => list.isNotEmpty);
@@ -581,6 +649,7 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                       child: SubBannerCard(
                         banner: banner,
                         forceDesktop: true,
+                        exportConfig: _exportBadgeConfig,
                         characterAvatarMap: characterAvatarMap,
                         weaponAvatarMap: weaponAvatarMap,
                       ),
@@ -610,9 +679,7 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                         padding: const EdgeInsets.only(bottom: 18),
                         child: _buildCategorySummaryBar(
                           poolTitle: poolTypes[selectedPool]!,
-                          bannerCount: currentSubBanners.length,
-                          totalPulls: categoryTotalPulls,
-                          totalSixStars: categoryTotalSixStars,
+                          banners: currentSubBanners, // 修改：直接傳入整個卡池列表
                         ),
                       );
                     }
@@ -779,13 +846,19 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
     );
   }
 
-  /// 構建大類統計資訊條 (顯示當前分類總抽數與 6★ 數量)
+  /// 構建大類統計資訊條 (顯示當前分類的常規總和，並提供詳細數據面板)
   Widget _buildCategorySummaryBar({
     required String poolTitle,
-    required int bannerCount,
-    required int totalPulls,
-    required int totalSixStars,
+    required List<SubBannerGroup> banners,
   }) {
+    // 判斷此大類是否有免費機制
+    final bool hasFreeMechanic = poolTitle == '特許尋訪' || poolTitle == '重構尋訪';
+    final String pullLabel = hasFreeMechanic ? '常規總抽數' : '累計總抽數';
+    final String starLabel = hasFreeMechanic ? '常規 6★' : '累計 6★';
+    // 計算常規數據加總
+    final int totalRegularPulls = banners.fold(0, (sum, b) => sum + b.regularPulls);
+    final int totalRegularSixStars = banners.fold(0, (sum, b) => sum + b.regularSixStarCount);
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -802,15 +875,36 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
         crossAxisAlignment: WrapCrossAlignment.center,
         children: [
           Text(
-            '$poolTitle // 共收錄 $bannerCount 個獨立卡池區塊',
+            '$poolTitle // 共收錄 ${banners.length} 個獨立卡池區塊',
             style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13),
           ),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _buildMiniStat('累計總抽數', '$totalPulls 抽', const Color(0xFFFFCC00)),
+              _buildMiniStat(pullLabel, '$totalRegularPulls 抽', const Color(0xFFFFCC00)),
               const SizedBox(width: 20),
-              _buildMiniStat('累計 6★', '$totalSixStars 名', const Color(0xFF10B981)),
+              _buildMiniStat(starLabel, '$totalRegularSixStars 個', const Color(0xFF10B981)),
+              const SizedBox(width: 20),
+              // 大類別的數據面板按鈕
+              GestureDetector(
+                onTap: () => _showCategoryStatsDialog(context, poolTitle, banners),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFA855F7).withAlpha(38),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFA855F7)),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.bar_chart, color: Color(0xFFD8B4FE), size: 14),
+                      SizedBox(width: 4),
+                      Text('全部數據', style: TextStyle(color: Color(0xFFD8B4FE), fontWeight: FontWeight.bold, fontSize: 12)),
+                    ],
+                  ),
+                ),
+              ),
             ],
           ),
         ],
@@ -872,14 +966,11 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                                   title: Text(
                                       'UID: $uid',
                                       style: TextStyle(
-                                        // 當前帳號用特別的顏色標註
                                           color: uid == currentUid ? const Color(0xFFFFCC00) : Colors.white,
                                           fontWeight: uid == currentUid ? FontWeight.bold : FontWeight.normal
                                       )
                                   ),
-                                  // 用副標題提示哪個是當前帳號
                                   subtitle: uid == currentUid ? const Text('當前畫面顯示中', style: TextStyle(color: Colors.white54, fontSize: 12)) : null,
-                                  // 右側統一放一個「匯出」的小圖示，暗示點擊行為
                                   trailing: const Icon(Icons.upload_file, color: Colors.white54, size: 18),
                                   onTap: () => Navigator.pop(dialogContext, uid),
                                 )).toList(),
@@ -892,7 +983,6 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                             await BackupService.exportBackupJson(context, selectedUid);
                           }
                         } else {
-                          // 若只有單一帳號，直接匯出
                           await BackupService.exportBackupJson(context, currentUid);
                         }
                       },
@@ -901,10 +991,8 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                       leading: const Icon(Icons.folder_open, color: Color(0xFF34D399)),
                       title: const Text('導入歷史備份 (JSON)', style: TextStyle(color: Colors.white70, fontSize: 13)),
                       onTap: () async {
-                        // 1. 先關閉外層的這個「備份與管理」設定對話框
                         Navigator.pop(innerContext);
 
-                        // 2. 加上 await，等待玩家在「預覽對話框」中做出選擇並匯入完成
                         await BackupService.importBackupFromFile(context, currentUid, accountUids, (newUid) async {
                           mainSetState(() { currentUid = newUid; });
                           await _loadLocalDataForCurrentUid();
@@ -953,6 +1041,149 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
           },
         );
       },
+    );
+  }
+  /// 彈出「大類別」彙總詳細數據面板視窗
+  void _showCategoryStatsDialog(BuildContext context, String poolTitle, List<SubBannerGroup> banners) {
+    // --- 加總常規數據 ---
+    final int regPulls = banners.fold(0, (sum, b) => sum + b.regularPulls);
+    final int regSixStars = banners.fold(0, (sum, b) => sum + b.regularSixStarCount);
+    final int regUp = banners.fold(0, (sum, b) => sum + b.regularUpCount);
+    final int regOff = banners.fold(0, (sum, b) => sum + b.regularOffCount);
+    final double regAvg = regSixStars > 0 ? (regPulls / regSixStars) : 0.0;
+    final double regRate = regPulls > 0 ? ((regSixStars / regPulls) * 100) : 0.0;
+    final int regFiveStars = banners.fold(0, (sum, b) => sum + b.regularFiveStarCount);
+    final int regFourStars = banners.fold(0, (sum, b) => sum + b.regularFourStarCount);
+
+    // --- 加總免費數據 ---
+    final int freePulls = banners.fold(0, (sum, b) => sum + b.freePulls);
+    final int freeSixStars = banners.fold(0, (sum, b) => sum + b.freeSixStarCount);
+    final int freeUp = banners.fold(0, (sum, b) => sum + b.freeUpCount);
+    final int freeOff = banners.fold(0, (sum, b) => sum + b.freeOffCount);
+    final double freeAvg = freeSixStars > 0 ? (freePulls / freeSixStars) : 0.0;
+    final double freeRate = freePulls > 0 ? ((freeSixStars / freePulls) * 100) : 0.0;
+    final int freeFiveStars = banners.fold(0, (sum, b) => sum + b.freeFiveStarCount);
+    final int freeFourStars = banners.fold(0, (sum, b) => sum + b.freeFourStarCount);
+
+    final bool hasFreeMechanic = poolTitle == '特許尋訪' || poolTitle == '重構尋訪';
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF181920),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Colors.white12),
+          ),
+          title: Text(
+            '【$poolTitle】總和統計',
+            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 常規彙總區塊
+              Text(
+                  hasFreeMechanic ? '🔸 歷史常規尋訪' : '🔸 歷史尋訪統計',
+                  style: const TextStyle(color: Color(0xFFFFCC00), fontSize: 13, fontWeight: FontWeight.bold)
+              ),
+              const SizedBox(height: 8),
+              _buildMiniStatRow('總計投入', '$regPulls 抽'),
+              _buildMiniStatRow('獲得 6★', '$regSixStars 個'),
+              if (regSixStars > 0) ...[
+                _buildMiniStatRow('出彩明細', '$regUp UP / $regOff 歪'),
+                _buildMiniStatRow('綜合平均', '${regAvg.toStringAsFixed(1)} 抽'),
+                _buildMiniStatRow('綜合彩率', '${regRate.toStringAsFixed(2)}%'),
+              ],
+              if (regPulls > 0)
+                _buildRarityBar(regPulls, regSixStars, regFiveStars, regFourStars),
+
+              // 免費彙總區塊 (只有在該大類有免費抽時才顯示)
+              if (freePulls > 0) ...[
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Divider(color: Colors.white12, height: 1),
+                ),
+                const Text('🔹 歷史免費尋訪', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                _buildMiniStatRow('總計投入', '$freePulls 抽'),
+                _buildMiniStatRow('獲得 6★', '$freeSixStars 個'),
+                if (freeSixStars > 0) ...[
+                  _buildMiniStatRow('出彩明細', '$freeUp UP / $freeOff 歪'),
+                  _buildMiniStatRow('綜合平均', '${freeAvg.toStringAsFixed(1)} 抽'),
+                  _buildMiniStatRow('綜合彩率', '${freeRate.toStringAsFixed(2)}%'),
+                ],
+              ],
+              if (freePulls > 0)
+                _buildRarityBar(freePulls, freeSixStars, freeFiveStars, freeFourStars),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('關閉', style: TextStyle(color: Colors.white70)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // 小視窗內的排版輔助元件
+  Widget _buildMiniStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+          Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+  /// 繪製橫向堆疊條形圖 (稀有度分布)
+  Widget _buildRarityBar(int total, int stars6, int stars5, int stars4) {
+    if (total == 0) return const SizedBox.shrink();
+
+    // 如果有 3★ 或其他星級，算進 others
+    final int others = total - stars6 - stars5 - stars4;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 6),
+        const Text('稀有度分布', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: SizedBox(
+            height: 10,
+            child: Row(
+              children: [
+                if (stars6 > 0) Expanded(flex: stars6, child: Container(color: const Color(0xFFFFCC00))),
+                if (stars5 > 0) Expanded(flex: stars5, child: Container(color: const Color(0xFFA855F7))),
+                if (stars4 > 0) Expanded(flex: stars4, child: Container(color: const Color(0xFF60A5FA))),
+                if (others > 0) Expanded(flex: others, child: Container(color: Colors.white24)),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('6★ ${(stars6 / total * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Color(0xFFFFCC00), fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('5★ ${(stars5 / total * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Color(0xFFA855F7), fontSize: 11, fontWeight: FontWeight.bold)),
+            Text('4★ ${(stars4 / total * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Color(0xFF60A5FA), fontSize: 11, fontWeight: FontWeight.bold)),
+            if (others > 0)
+              Text('其他 ${(others / total * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        const SizedBox(height: 6),
+      ],
     );
   }
 }

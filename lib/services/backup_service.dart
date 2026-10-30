@@ -12,6 +12,41 @@ class BackupService {
   // ==========================================================================
   // 1. 手動匯出資料備份 (JSON)
   // ==========================================================================
+
+  // 統一讀取並組裝指定 [uid] 的所有卡池資料，產生標準備份用的 JSON 字典結構。
+  static Future<Map<String, dynamic>> _buildBackupData(
+      String uid,
+      ) async {
+    final special = await LocalStorage.loadRecords(
+      uid, 'pool_special',
+    );
+    final refactor = await LocalStorage.loadRecords(
+      uid, 'pool_refactor',
+    );
+    final standard = await LocalStorage.loadRecords(
+      uid, 'pool_standard',
+    );
+    final weapon = await LocalStorage.loadRecords(
+      uid, 'pool_weapon',
+    );
+    final beginner = await LocalStorage.loadRecords(
+      uid, 'pool_beginner',
+    );
+
+    return {
+      'uid': uid,
+      'version': 1,
+      'exportTime': DateTime.now().toIso8601String(),
+      'records': {
+        'pool_special': special,
+        'pool_refactor': refactor,
+        'pool_standard': standard,
+        'pool_weapon': weapon,
+        'pool_beginner': beginner,
+      },
+    };
+  }
+
   static Future<void> exportBackupJson(BuildContext context, String? currentUid) async {
     final messenger = ScaffoldMessenger.of(context);
 
@@ -21,25 +56,8 @@ class BackupService {
     }
 
     try {
-      final special = await LocalStorage.loadRecords(currentUid, 'pool_special');
-      final refactor = await LocalStorage.loadRecords(currentUid, 'pool_refactor');
-      final standard = await LocalStorage.loadRecords(currentUid, 'pool_standard');
-      final weapon = await LocalStorage.loadRecords(currentUid, 'pool_weapon');
-      final beginner = await LocalStorage.loadRecords(currentUid, 'pool_beginner');
-
-      final Map<String, dynamic> backupData = {
-        'uid': currentUid,
-        'version': 1,
-        'exportTime': DateTime.now().toIso8601String(),
-        'records': {
-          'pool_special': special,
-          'pool_refactor': refactor,
-          'pool_standard': standard,
-          'pool_weapon': weapon,
-          'pool_beginner': beginner,
-        }
-      };
-
+      // 改用共用方法
+      final Map<String, dynamic> backupData = await _buildBackupData(currentUid);
       final jsonString = const JsonEncoder.withIndent('  ').convert(backupData);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final fileName = 'Endfield_Backup_${currentUid}_$timestamp.json';
@@ -351,25 +369,8 @@ class BackupService {
   // ==========================================================================
   static Future<void> saveAutoBackup(String uid) async {
     try {
-      final specialData = await LocalStorage.loadRecords(uid, 'pool_special');
-      final refactorData = await LocalStorage.loadRecords(uid, 'pool_refactor');
-      final standardData = await LocalStorage.loadRecords(uid, 'pool_standard');
-      final weaponData = await LocalStorage.loadRecords(uid, 'pool_weapon');
-      final beginnerData = await LocalStorage.loadRecords(uid, 'pool_beginner');
-
-      final Map<String, dynamic> backupData = {
-        'uid': uid,
-        'version': 1,
-        'exportTime': DateTime.now().toIso8601String(),
-        'records': {
-          'pool_special': specialData,
-          'pool_refactor': refactorData,
-          'pool_standard': standardData,
-          'pool_weapon': weaponData,
-          'pool_beginner': beginnerData,
-        }
-      };
-
+      // 改用共用方法
+      final Map<String, dynamic> backupData = await _buildBackupData(uid);
       final jsonString = const JsonEncoder.withIndent('  ').convert(backupData);
       final fileName = 'Endfield_AutoBackup_$uid.json';
 
@@ -382,8 +383,11 @@ class BackupService {
           await File('${directory.path}${Platform.pathSeparator}$fileName').writeAsString(jsonString);
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('自動背景備份失敗: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      // 將錯誤往上拋，讓 sync_dialog.dart 能正確接住並顯示警告 Snackbar
+      rethrow;
     }
   }
 }

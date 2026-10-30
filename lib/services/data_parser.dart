@@ -5,6 +5,7 @@ List<SubBannerGroup> parseRawDataToModels(
     List<dynamic> rawRecords,
     Map<String, List<String>> bannerUpMap, {
       bool isWeaponPool = false,
+      String poolCategory = '',
     }) {
   if (rawRecords.isEmpty) return [];
 
@@ -23,9 +24,14 @@ List<SubBannerGroup> parseRawDataToModels(
   Map<String, List<SixStarPityItem>> poolFree10SixStars = {};
   Map<String, int> poolFinalGlobalPity = {};
   Map<String, int> poolLocalPity = {};
+  Map<String, int> poolRegular4Stars = {};
+  Map<String, int> poolRegular5Stars = {};
+  Map<String, int> poolFree4Stars = {};
+  Map<String, int> poolFree5Stars = {};
 
   int globalPityCount = 0;
   List<String> orderedPoolNames = [];
+  bool sharesPity = (poolCategory == 'Special' || poolCategory == 'Standard');
 
   for (var r in sortedRecords) {
     String poolName = r['poolName'] ?? '未知卡池';
@@ -46,6 +52,10 @@ List<SubBannerGroup> parseRawDataToModels(
     poolFree10SixStars.putIfAbsent(poolName, () => []);
     poolLocalPity.putIfAbsent(poolName, () => 0);
     poolFinalGlobalPity.putIfAbsent(poolName, () => globalPityCount);
+    poolRegular4Stars.putIfAbsent(poolName, () => 0);
+    poolRegular5Stars.putIfAbsent(poolName, () => 0);
+    poolFree4Stars.putIfAbsent(poolName, () => 0);
+    poolFree5Stars.putIfAbsent(poolName, () => 0);
 
     if (kind == 'gift_intel_book' || kind == 'gift_weapon_box') continue;
 
@@ -65,7 +75,19 @@ List<SubBannerGroup> parseRawDataToModels(
     if (kind == 'draw') {
       poolTotalDrawCount[poolName] = poolTotalDrawCount[poolName]! + 1;
       int currentTotal = poolTotalDrawCount[poolName]!;
-      bool isFreeTenPull = !isWeaponPool && (currentTotal >= 31 && currentTotal <= 40);
+
+      // 根據卡池分類套用不同的免費十連規則
+      bool isFreeTenPull = false;
+
+      if (poolCategory == 'Special') {
+        // 特許尋訪：僅在 31~40 抽為免費
+        isFreeTenPull = (currentTotal >= 31 && currentTotal <= 40);
+      } else if (poolCategory == 'Refactor') {
+        // 重構尋訪：31~40、71~80、111~120 抽皆為免費 (30、60、90抽後贈送)
+        isFreeTenPull = (currentTotal >= 31 && currentTotal <= 40) ||
+            (currentTotal >= 71 && currentTotal <= 80) ||
+            (currentTotal >= 111 && currentTotal <= 120);
+      }
 
       // 嚴謹判斷是否為 UP 對象 (若對照表無該卡池資料，設為 null 代表未知)
       bool? isTargetUp;
@@ -73,24 +95,49 @@ List<SubBannerGroup> parseRawDataToModels(
         isTargetUp = bannerUpMap[poolName]!.contains(name);
       }
 
+      if (rarity == 4) {
+        if (isFreeTenPull) {
+          poolFree4Stars[poolName] = poolFree4Stars[poolName]! + 1;
+        } else {
+          poolRegular4Stars[poolName] = poolRegular4Stars[poolName]! + 1;
+        }
+      } else if (rarity == 5) {
+        if (isFreeTenPull) {
+          poolFree5Stars[poolName] = poolFree5Stars[poolName]! + 1;
+        } else {
+          poolRegular5Stars[poolName] = poolRegular5Stars[poolName]! + 1;
+        }
+      }
+
       if (isFreeTenPull) {
         poolFreePullsCount[poolName] = poolFreePullsCount[poolName]! + 1;
         if (rarity == 6) {
+          // 計算目前的免費十連屬於哪個階段 (30, 60, 90)
+          int currentPhase = ((currentTotal - 1) ~/ 40) * 30 + 30;
+          if (poolCategory == 'Special') currentPhase = 30; // 特許尋訪防呆
+
           poolFree10SixStars[poolName]!.add(SixStarPityItem(
             name: name,
-            pityCount: currentTotal - 30,
+            pityCount: currentTotal - ((currentPhase ~/ 30) * 40 - 10), // 修正相對抽數顯示
             isUp: isTargetUp,
             dateStr: dateStr,
             isFree: true,
+            freePhase: currentPhase, // 寫入階段標記
           ));
         }
         continue;
       }
 
       poolEffectivePulls[poolName] = poolEffectivePulls[poolName]! + 1;
-      globalPityCount++;
       poolLocalPity[poolName] = poolLocalPity[poolName]! + 1;
-      poolFinalGlobalPity[poolName] = globalPityCount;
+
+      // 根據是否跨池繼承，更新該池當下的「墊抽進度條 (poolFinalGlobalPity)」
+      if (sharesPity) {
+        globalPityCount++;
+        poolFinalGlobalPity[poolName] = globalPityCount;
+      } else {
+        poolFinalGlobalPity[poolName] = poolLocalPity[poolName]!;
+      }
 
       if (rarity == 6) {
         poolSixStars[poolName]!.add(SixStarPityItem(
@@ -100,7 +147,9 @@ List<SubBannerGroup> parseRawDataToModels(
           dateStr: dateStr,
         ));
 
-        globalPityCount = 0;
+        if (sharesPity) {
+          globalPityCount = 0;
+        }
         poolLocalPity[poolName] = 0;
         poolFinalGlobalPity[poolName] = 0;
       }
@@ -110,25 +159,32 @@ List<SubBannerGroup> parseRawDataToModels(
   List<SubBannerGroup> subBanners = [];
 
   for (String poolName in orderedPoolNames.reversed) {
-    // 僅計算 kind 為 draw 的真實抽卡次數
-    int totalRawPulls = rawRecords.where((r) =>
-    (r['poolName'] ?? '未知卡池') == poolName && r['kind']?.toString() == 'draw'
-    ).length;
+    // 僅計算 kind 為 draw 的真實抽卡次數 (直接讀取已統計算好的數值)
+    final totalRawPulls = poolTotalDrawCount[poolName] ?? 0;
 
     List<String> upList = bannerUpMap[poolName] ?? [];
-    String displayUpName = upList.isEmpty ? '當期UP' : upList.join(' / ');
+    String displayUpName = upList.isEmpty ? 'UP未知' : upList.join(' / ');
+
+    // 武庫與啟程尋訪的小保底上限為 40 抽，其餘為 80 抽
+    int hardPity = (poolCategory == 'Weapon' || poolCategory == 'Beginner') ? 40 : 80;
 
     subBanners.add(SubBannerGroup(
       bannerName: poolName,
+      poolCategory: poolCategory,
       upTargetName: displayUpName,
       periodStr: '已同步',
       totalPulls: totalRawPulls,
       effectivePulls: poolEffectivePulls[poolName]!,
       currentPity: poolFinalGlobalPity[poolName]!,
+      hardPityLimit: hardPity,
       isWeapon: isWeaponPool,
       freePullsCount: poolFreePullsCount[poolName]!,
       sixStars: poolSixStars[poolName]!.reversed.toList(),
       free10SixStars: poolFree10SixStars[poolName]!.reversed.toList(),
+      regularFourStarCount: poolRegular4Stars[poolName] ?? 0,
+      regularFiveStarCount: poolRegular5Stars[poolName] ?? 0,
+      freeFourStarCount: poolFree4Stars[poolName] ?? 0,
+      freeFiveStarCount: poolFree5Stars[poolName] ?? 0,
     ));
   }
 

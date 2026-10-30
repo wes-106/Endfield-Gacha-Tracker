@@ -68,15 +68,8 @@ class LocalStorage {
     final isar = await db;
 
     final List<GachaRecord> isarRecords = rawRecords.map((json) {
-      return GachaRecord()
-        ..uid = targetUid
-        ..seqId = json['seqId']?.toString() ?? ''
-        ..poolCategory = key
-        ..poolName = json['poolName'] ?? '未知卡池'
-        ..kind = json['kind']?.toString() ?? ''
-        ..rarity = json['rarity'] is int ? json['rarity'] : int.tryParse(json['rarity']?.toString() ?? '4') ?? 4
-        ..name = json['nameText'] ?? json['charName'] ?? json['weaponName'] ?? '未知'
-        ..gachaTs = int.tryParse(json['gachaTs']?.toString() ?? '0') ?? 0;
+      // 呼叫共用的轉換方法
+      return _toGachaRecord(targetUid, key, json as Map<String, dynamic>);
     }).where((r) => r.seqId.isNotEmpty).toList();
 
     // 寫入資料庫 (利用 replace: true 自動覆蓋重複資料)
@@ -97,7 +90,7 @@ class LocalStorage {
         .findAll();
 
     // 2. 如果新格式查不到資料，且傳入的 UID 是以 "_2" 結尾（亞服）
-    // 這代表玩家可能是舊版升上來的，我們嘗試去資料庫撈舊版的「純 UID」資料！
+    // 這代表玩家可能是舊版升上來的，我們嘗試去資料庫撈舊版的「純 UID」資料
     if (records.isEmpty && uid.endsWith('_2')) {
       final legacyUid = uid.split('_').first;
       final legacyRecords = await isar.gachaRecords.filter()
@@ -161,7 +154,7 @@ class LocalStorage {
     return mergedMap.values.toList();
   }
 
-  /// 備份專用的整包匯入方法 (具備自動正規化 UID 與原子性交易)
+  /// 備份專用的整包匯入方法
   static Future<void> importBackupData(String uid, Map<String, List<dynamic>> poolsData, {required bool isOverwrite}) async {
     // 如果匯入的 uid 沒有後綴，強制補上 _2
     final targetUid = uid.contains('_') ? uid : '${uid}_2';
@@ -171,15 +164,8 @@ class LocalStorage {
 
     poolsData.forEach((poolKey, rawRecords) {
       final parsedRecords = rawRecords.map((json) {
-        return GachaRecord()
-          ..uid = targetUid
-          ..seqId = json['seqId']?.toString() ?? ''
-          ..poolCategory = poolKey
-          ..poolName = json['poolName'] ?? '未知卡池'
-          ..kind = json['kind']?.toString() ?? ''
-          ..rarity = json['rarity'] is int ? json['rarity'] : int.tryParse(json['rarity']?.toString() ?? '4') ?? 4
-          ..name = json['nameText'] ?? json['charName'] ?? json['weaponName'] ?? '未知'
-          ..gachaTs = int.tryParse(json['gachaTs']?.toString() ?? '0') ?? 0;
+        // 呼叫共用的轉換方法
+        return _toGachaRecord(targetUid, poolKey, json as Map<String, dynamic>);
       }).where((r) => r.seqId.isNotEmpty).toList();
 
       allRecordsToInsert.addAll(parsedRecords);
@@ -192,5 +178,28 @@ class LocalStorage {
 
       await isar.gachaRecords.putAll(allRecordsToInsert);
     });
+  }
+  // 將原始 JSON 資料統一轉換為資料庫專用的 GachaRecord 模型
+  // 將轉換邏輯集中於此，可確保"API 同步"與"備份還原"寫入管道的結構一致。
+  static GachaRecord _toGachaRecord(
+      String uid,
+      String poolCategory,
+      Map<String, dynamic> item,
+      ) {
+    return GachaRecord()
+      ..uid = uid
+      ..seqId = item['seqId']?.toString() ?? ''
+      ..poolCategory = poolCategory
+      ..poolName = item['poolName']?.toString() ?? '未知卡池'
+      ..kind = item['kind']?.toString() ?? ''
+      ..rarity = item['rarity'] is int
+          ? item['rarity']
+          : int.tryParse(item['rarity']?.toString() ?? '4') ?? 4
+      ..name = item['nameText'] ??
+          item['charName'] ??
+          item['weaponName'] ??
+          '未知'
+      ..gachaTs =
+          int.tryParse(item['gachaTs']?.toString() ?? '0') ?? 0;
   }
 }
