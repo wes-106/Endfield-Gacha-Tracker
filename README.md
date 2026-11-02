@@ -42,14 +42,15 @@
 如果您希望親自驗證程式碼，或針對不同平台進行編譯，請參考以下步驟：
 
 ### 環境要求
-- [Flutter SDK](https://flutter.dev/docs/get-started/install) (版本 3.13.5 或以上)
+- Flutter SDK：需使用包含符合專案 Dart SDK 版本的 Flutter 版本。
+- Dart SDK：^3.13.5。
 - 若編譯 Windows 版：需安裝 Visual Studio 2022 (包含 C++ 桌面開發工作負載)
 - 若編譯 Android 版：需安裝 Android Studio 
 
 ### 1. 取得原始碼與依賴套件
 ```bash
 git clone https://github.com/wes-106/Endfield-Gacha-Tracker.git
-cd gacha_record
+cd Endfield-Gacha-Tracker
 flutter pub get
 ```
 
@@ -95,10 +96,10 @@ Endfield-Gacha-Tracker/
 ├── ios / macos / ...   # 其他跨平台支援外殼 (標準 Flutter 架構)
 ├── assets/             # 程式圖標與靜態資源
 ├── lib/                # 核心程式碼目錄
-│   ├── dialogs/        # 互動對話框 (匯出、資訊說明、同步操作)
+│   ├── dialogs/        # 互動對話框 (備份設定、分類統計、匯出、說明、單卡池統計、同步)
 │   ├── models/         # 資料模型與資料庫結構定義 (Isar)
-│   ├── services/       # 核心邏輯 (API 請求、驗證、備份、本機儲存與解析)
-│   ├── widgets/        # 共用 UI 元件 (側邊欄、卡片等)
+│   ├── services/       # 核心服務層 (API、驗證、備份、本機儲存、解析、字典快取與設定)
+│   ├── widgets/        # 共用 UI 元件 (側邊欄、稀有度分布條、卡片等)
 │   └── main.dart       # 程式主入口
 ├── LICENSES/           # 第三方許可證副本
 └── pubspec.yaml        # 專案相依套件設定
@@ -113,7 +114,7 @@ Endfield-Gacha-Tracker/
 3. 當期 UP 卡池資訊清單
 
 **對程式運作的影響**：
-這些遠端檔案僅用於「畫面顯示」的對應（例如將代碼轉換為角色頭像），不參與帳號驗證或抽卡紀錄的本地存取邏輯。若遊戲推出新卡池時您發現圖片無法顯示，通常代表遠端字典檔尚未更新。請靜候開發者更新 `endfield-dictionary` 倉庫上的檔案，您的程式在下次開啟時即會自動載入最新圖庫。
+這些遠端檔案僅用於「畫面顯示」的對應（例如將代碼轉換為角色頭像），不參與帳號驗證或抽卡紀錄的本地存取邏輯。程式內建本地快取與離線容錯機制，即使在無網路環境下也能自動載入上次快取的圖庫。若遊戲推出新卡池時您發現新角色圖片無法顯示，通常代表遠端字典檔尚待更新，待開發者更新 `endfield-dictionary` 倉庫後，您的程式會在下次連線時自動更新並載入最新圖庫。
 
 ---
 
