@@ -7,9 +7,18 @@ class ExportDialog extends StatefulWidget {
   final bool initialShowAccount;
   final String initialAccountName;
   final Map<String, bool> exportConfig;
+
+  /// 儲存玩家調整後的圖表顯示設定。
   final Function(Map<String, bool>) onConfigSaved;
-  // 導出時將玩家選好的設定回傳給主畫面
-  final Function(List<String> toExport, bool showTime, bool showAccount, String accountName) onExport;
+
+  /// 將匯出選項回傳給主畫面，由主畫面執行圖片生成。
+  final Function(
+    List<String> toExport,
+    bool showTime,
+    bool showAccount,
+    String accountName,
+  )
+  onExport;
 
   const ExportDialog({
     super.key,
@@ -36,8 +45,10 @@ class _ExportDialogState extends State<ExportDialog> {
   @override
   void initState() {
     super.initState();
-    // 根據傳入的卡池清單，預設全部打勾
-    selectedBanners = {for (var name in widget.bannerNames) name: true};
+
+    // 將傳入的卡池清單設為預設不選。
+    selectedBanners = {for (var name in widget.bannerNames) name: false};
+
     showTime = widget.initialShowTime;
     showAccount = widget.initialShowAccount;
     nameController = TextEditingController(text: widget.initialAccountName);
@@ -51,7 +62,8 @@ class _ExportDialogState extends State<ExportDialog> {
 
   @override
   Widget build(BuildContext context) {
-    bool allSelected = selectedBanners.values.every((v) => v);
+    // 所有卡池均勾選時，全選選項才會呈現勾選狀態。
+    final bool allSelected = selectedBanners.values.every((v) => v);
 
     return AlertDialog(
       backgroundColor: const Color(0xFF181920),
@@ -59,7 +71,10 @@ class _ExportDialogState extends State<ExportDialog> {
         children: [
           const Icon(Icons.image, color: Color(0xFF60A5FA), size: 20),
           const SizedBox(width: 8),
-          Text('導出 ${widget.poolTitle} 紀錄', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold)),
+          Text(
+            '導出 ${widget.poolTitle} 紀錄',
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+          ),
           const Spacer(),
           IconButton(
             icon: const Icon(Icons.settings, color: Colors.white54),
@@ -74,10 +89,20 @@ class _ExportDialogState extends State<ExportDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('戳記設定', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13)),
+            const Text(
+              '戳記設定',
+              style: TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
             const SizedBox(height: 8),
             CheckboxListTile(
-              title: const Text('加上「生成時間」', style: TextStyle(fontSize: 14, color: Colors.white)),
+              title: const Text(
+                '加上「生成時間」',
+                style: TextStyle(fontSize: 14, color: Colors.white),
+              ),
               value: showTime,
               activeColor: const Color(0xFFFFCC00),
               checkColor: Colors.black,
@@ -87,7 +112,10 @@ class _ExportDialogState extends State<ExportDialog> {
               onChanged: (val) => setState(() => showTime = val ?? true),
             ),
             CheckboxListTile(
-              title: const Text('加上「帳號名稱 + UID」', style: TextStyle(fontSize: 14, color: Colors.white)),
+              title: const Text(
+                '加上「帳號名稱 + UID」',
+                style: TextStyle(fontSize: 14, color: Colors.white),
+              ),
               value: showAccount,
               activeColor: const Color(0xFFFFCC00),
               checkColor: Colors.black,
@@ -98,14 +126,22 @@ class _ExportDialogState extends State<ExportDialog> {
             ),
             if (showAccount)
               Padding(
-                padding: const EdgeInsets.only(left: 32, top: 4, bottom: 8, right: 16),
+                padding: const EdgeInsets.only(
+                  left: 32,
+                  top: 4,
+                  bottom: 8,
+                  right: 16,
+                ),
                 child: TextField(
                   controller: nameController,
                   style: const TextStyle(fontSize: 13, color: Colors.white),
                   decoration: const InputDecoration(
                     hintText: '請輸入帳號名稱 (選填)',
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -114,10 +150,23 @@ class _ExportDialogState extends State<ExportDialog> {
               padding: EdgeInsets.symmetric(vertical: 8),
               child: Divider(color: Colors.white12),
             ),
-            const Text('選擇要導出的卡池', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 13)),
+            const Text(
+              '選擇要導出的卡池',
+              style: TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
             const SizedBox(height: 8),
             CheckboxListTile(
-              title: const Text('全選 / 取消全選', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+              title: const Text(
+                '全選 / 取消全選',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
               value: allSelected,
               activeColor: const Color(0xFFFFCC00),
               checkColor: Colors.black,
@@ -136,15 +185,23 @@ class _ExportDialogState extends State<ExportDialog> {
                 itemCount: widget.bannerNames.length,
                 itemBuilder: (context, index) {
                   final name = widget.bannerNames[index];
+
                   return CheckboxListTile(
-                    title: Text(name, style: const TextStyle(fontSize: 14, color: Colors.white70)),
+                    title: Text(
+                      name,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Colors.white70,
+                      ),
+                    ),
                     value: selectedBanners[name],
                     activeColor: const Color(0xFFFFCC00),
                     checkColor: Colors.black,
                     dense: true,
                     visualDensity: VisualDensity.compact,
                     contentPadding: const EdgeInsets.only(left: 16),
-                    onChanged: (val) => setState(() => selectedBanners[name] = val ?? false),
+                    onChanged: (val) =>
+                        setState(() => selectedBanners[name] = val ?? false),
                   );
                 },
               ),
@@ -158,27 +215,47 @@ class _ExportDialogState extends State<ExportDialog> {
           child: const Text('取消', style: TextStyle(color: Colors.white54)),
         ),
         ElevatedButton(
-          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFCC00)),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFFFFCC00),
+          ),
           onPressed: () {
-            Navigator.pop(context);
-            final toExport = selectedBanners.entries.where((e) => e.value).map((e) => e.key).toList();
+            final toExport = selectedBanners.entries
+                .where((e) => e.value)
+                .map((e) => e.key)
+                .toList();
 
             if (toExport.isEmpty) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未選擇任何卡池')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('未選擇任何卡池，請至少勾選一項。'),
+                  backgroundColor: Color(0xFFEF4444),
+                ),
+              );
               return;
             }
 
-            // 觸發回調，把結果傳回給主畫面去執行截圖
-            widget.onExport(toExport, showTime, showAccount, nameController.text.trim());
+            Navigator.pop(context);
+
+            // 將匯出選項回傳主畫面，由主畫面執行圖片生成。
+            widget.onExport(
+              toExport,
+              showTime,
+              showAccount,
+              nameController.text.trim(),
+            );
           },
-          child: const Text('生成圖片', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+          child: const Text(
+            '生成圖片',
+            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+          ),
         ),
       ],
     );
   }
-  // 導出圖片的標籤設定
+
+  /// 開啟圖表顯示設定視窗。
   void _showAdvancedSettings(BuildContext parentContext) {
-    Map<String, bool> tempConfig = Map.from(widget.exportConfig);
+    final Map<String, bool> tempConfig = Map.from(widget.exportConfig);
 
     showDialog(
       context: parentContext,
@@ -187,41 +264,70 @@ class _ExportDialogState extends State<ExportDialog> {
           builder: (context, setModalState) {
             return AlertDialog(
               backgroundColor: const Color(0xFF1E2029),
-              title: const Text('圖表顯示設定', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+              title: const Text(
+                '圖表顯示設定',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
               content: SizedBox(
                 width: 300,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     SwitchListTile(
-                      title: const Text('顯示 UP/歪明細', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      title: const Text(
+                        '顯示 UP/歪明細',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
                       value: tempConfig['showUpOff'] ?? true,
                       activeThumbColor: const Color(0xFFFFCC00),
-                      onChanged: (val) => setModalState(() => tempConfig['showUpOff'] = val),
+                      onChanged: (val) =>
+                          setModalState(() => tempConfig['showUpOff'] = val),
                     ),
                     SwitchListTile(
-                      title: const Text('顯示常規平均 (抽/個)', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      title: const Text(
+                        '顯示常規平均 (抽/個)',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
                       value: tempConfig['showAvg'] ?? true,
                       activeThumbColor: const Color(0xFFFFCC00),
-                      onChanged: (val) => setModalState(() => tempConfig['showAvg'] = val),
+                      onChanged: (val) =>
+                          setModalState(() => tempConfig['showAvg'] = val),
                     ),
                     SwitchListTile(
-                      title: const Text('顯示常規彩率 (%)', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      title: const Text(
+                        '顯示常規彩率 (%)',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
                       value: tempConfig['showRate'] ?? true,
                       activeThumbColor: const Color(0xFFFFCC00),
-                      onChanged: (val) => setModalState(() => tempConfig['showRate'] = val),
+                      onChanged: (val) =>
+                          setModalState(() => tempConfig['showRate'] = val),
                     ),
                     SwitchListTile(
-                      title: const Text('顯示稀有度分布圖', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      title: const Text(
+                        '顯示稀有度分布圖',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
                       value: tempConfig['showRarityBar'] ?? true,
                       activeThumbColor: const Color(0xFFFFCC00),
-                      onChanged: (val) => setModalState(() => tempConfig['showRarityBar'] = val),
+                      onChanged: (val) => setModalState(
+                        () => tempConfig['showRarityBar'] = val,
+                      ),
                     ),
                     SwitchListTile(
-                      title: const Text('包含「階段免費尋訪」', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                      title: const Text(
+                        '包含「階段免費尋訪」',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
                       value: tempConfig['showFreePulls'] ?? true,
                       activeThumbColor: const Color(0xFFFFCC00),
-                      onChanged: (val) => setModalState(() => tempConfig['showFreePulls'] = val),
+                      onChanged: (val) => setModalState(
+                        () => tempConfig['showFreePulls'] = val,
+                      ),
                     ),
                   ],
                 ),
@@ -229,15 +335,26 @@ class _ExportDialogState extends State<ExportDialog> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('取消', style: TextStyle(color: Colors.white54)),
+                  child: const Text(
+                    '取消',
+                    style: TextStyle(color: Colors.white54),
+                  ),
                 ),
                 ElevatedButton(
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFFFFCC00)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFFFCC00),
+                  ),
                   onPressed: () {
                     widget.onConfigSaved(tempConfig);
                     Navigator.pop(context);
                   },
-                  child: const Text('套用', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                  child: const Text(
+                    '套用',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ],
             );

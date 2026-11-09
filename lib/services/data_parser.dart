@@ -2,11 +2,11 @@ import '../models/gacha_record.dart';
 
 /// 將原始抽卡資料解析為 UI 支援的 SubBannerGroup 模型
 List<SubBannerGroup> parseRawDataToModels(
-    List<dynamic> rawRecords,
-    Map<String, List<String>> bannerUpMap, {
-      bool isWeaponPool = false,
-      String poolCategory = '',
-    }) {
+  List<dynamic> rawRecords,
+  Map<String, List<String>> bannerUpMap, {
+  bool isWeaponPool = false,
+  String poolCategory = '',
+}) {
   if (rawRecords.isEmpty) return [];
 
   // 依據 seqId (時間戳) 進行全域排序
@@ -30,20 +30,22 @@ List<SubBannerGroup> parseRawDataToModels(
   Map<String, int> poolFree5Stars = {};
 
   int globalPityCount = 0;
-  List<String> orderedPoolNames = [];
+  final orderedPoolNames = <String>{};
   bool sharesPity = (poolCategory == 'Special' || poolCategory == 'Standard');
 
   for (var r in sortedRecords) {
     String poolName = r['poolName'] ?? '未知卡池';
     String kind = r['kind']?.toString() ?? '';
-    int rarity = r['rarity'] is int ? r['rarity'] : int.tryParse(r['rarity']?.toString() ?? '4') ?? 4;
+    int rarity = r['rarity'] is int
+        ? r['rarity']
+        : int.tryParse(r['rarity']?.toString() ?? '4') ?? 4;
     String name = r['nameText'] ?? r['charName'] ?? r['weaponName'] ?? '未知';
     int ts = int.tryParse(r['gachaTs']?.toString() ?? '0') ?? 0;
     String dateStr = ts > 0
         ? DateTime.fromMillisecondsSinceEpoch(ts).toString().substring(0, 10)
         : '未知日期';
 
-    if (!orderedPoolNames.contains(poolName)) orderedPoolNames.add(poolName);
+    orderedPoolNames.add(poolName);
 
     poolEffectivePulls.putIfAbsent(poolName, () => 0);
     poolTotalDrawCount.putIfAbsent(poolName, () => 0);
@@ -61,13 +63,15 @@ List<SubBannerGroup> parseRawDataToModels(
 
     // 處理里程碑與贈送信物、武器
     if (kind == 'gift_operator_token' || kind == 'gift_weapon') {
-      poolSixStars[poolName]!.add(SixStarPityItem(
-        name: kind == 'gift_weapon' ? '贈送UP武器 ($name)' : '贈送UP潛能 ($name)',
-        pityCount: poolEffectivePulls[poolName]!,
-        isUp: true,
-        dateStr: dateStr,
-        isMilestone: true,
-      ));
+      poolSixStars[poolName]!.add(
+        SixStarPityItem(
+          name: kind == 'gift_weapon' ? '贈送UP武器 ($name)' : '贈送UP潛能 ($name)',
+          pityCount: poolEffectivePulls[poolName]!,
+          isUp: true,
+          dateStr: dateStr,
+          isMilestone: true,
+        ),
+      );
       continue;
     }
 
@@ -80,18 +84,18 @@ List<SubBannerGroup> parseRawDataToModels(
       bool isFreeTenPull = false;
 
       if (poolCategory == 'Special') {
-        // 特許尋訪：僅在 31~40 抽為免費
         isFreeTenPull = (currentTotal >= 31 && currentTotal <= 40);
       } else if (poolCategory == 'Refactor') {
-        // 重構尋訪：31~40、71~80、111~120 抽皆為免費 (30、60、90抽後贈送)
-        isFreeTenPull = (currentTotal >= 31 && currentTotal <= 40) ||
+        isFreeTenPull =
+            (currentTotal >= 31 && currentTotal <= 40) ||
             (currentTotal >= 71 && currentTotal <= 80) ||
             (currentTotal >= 111 && currentTotal <= 120);
       }
 
-      // 嚴謹判斷是否為 UP 對象 (若對照表無該卡池資料，設為 null 代表未知)
+      // 判斷是否為 UP 對象，無資料時為 null
       bool? isTargetUp;
-      if (bannerUpMap.containsKey(poolName) && bannerUpMap[poolName]!.isNotEmpty) {
+      if (bannerUpMap.containsKey(poolName) &&
+          bannerUpMap[poolName]!.isNotEmpty) {
         isTargetUp = bannerUpMap[poolName]!.contains(name);
       }
 
@@ -112,18 +116,19 @@ List<SubBannerGroup> parseRawDataToModels(
       if (isFreeTenPull) {
         poolFreePullsCount[poolName] = poolFreePullsCount[poolName]! + 1;
         if (rarity == 6) {
-          // 計算目前的免費十連屬於哪個階段 (30, 60, 90)
           int currentPhase = ((currentTotal - 1) ~/ 40) * 30 + 30;
-          if (poolCategory == 'Special') currentPhase = 30; // 特許尋訪防呆
+          if (poolCategory == 'Special') currentPhase = 30;
 
-          poolFree10SixStars[poolName]!.add(SixStarPityItem(
-            name: name,
-            pityCount: currentTotal - ((currentPhase ~/ 30) * 40 - 10), // 修正相對抽數顯示
-            isUp: isTargetUp,
-            dateStr: dateStr,
-            isFree: true,
-            freePhase: currentPhase, // 寫入階段標記
-          ));
+          poolFree10SixStars[poolName]!.add(
+            SixStarPityItem(
+              name: name,
+              pityCount: currentTotal - ((currentPhase ~/ 30) * 40 - 10),
+              isUp: isTargetUp,
+              dateStr: dateStr,
+              isFree: true,
+              freePhase: currentPhase,
+            ),
+          );
         }
         continue;
       }
@@ -131,7 +136,7 @@ List<SubBannerGroup> parseRawDataToModels(
       poolEffectivePulls[poolName] = poolEffectivePulls[poolName]! + 1;
       poolLocalPity[poolName] = poolLocalPity[poolName]! + 1;
 
-      // 根據是否跨池繼承，更新該池當下的「墊抽進度條 (poolFinalGlobalPity)」
+      // 根據跨池繼承設定，更新目前墊抽進度
       if (sharesPity) {
         globalPityCount++;
         poolFinalGlobalPity[poolName] = globalPityCount;
@@ -140,12 +145,14 @@ List<SubBannerGroup> parseRawDataToModels(
       }
 
       if (rarity == 6) {
-        poolSixStars[poolName]!.add(SixStarPityItem(
-          name: name,
-          pityCount: poolLocalPity[poolName]!,
-          isUp: isTargetUp,
-          dateStr: dateStr,
-        ));
+        poolSixStars[poolName]!.add(
+          SixStarPityItem(
+            name: name,
+            pityCount: poolLocalPity[poolName]!,
+            isUp: isTargetUp,
+            dateStr: dateStr,
+          ),
+        );
 
         if (sharesPity) {
           globalPityCount = 0;
@@ -158,34 +165,37 @@ List<SubBannerGroup> parseRawDataToModels(
 
   List<SubBannerGroup> subBanners = [];
 
-  for (String poolName in orderedPoolNames.reversed) {
-    // 僅計算 kind 為 draw 的真實抽卡次數 (直接讀取已統計算好的數值)
+  for (String poolName in orderedPoolNames.toList().reversed) {
+    // 僅計算 kind 為 draw 的真實抽卡總次數
     final totalRawPulls = poolTotalDrawCount[poolName] ?? 0;
 
     List<String> upList = bannerUpMap[poolName] ?? [];
     String displayUpName = upList.isEmpty ? 'UP未知' : upList.join(' / ');
 
-    // 武庫與啟程尋訪的小保底上限為 40 抽，其餘為 80 抽
-    int hardPity = (poolCategory == 'Weapon' || poolCategory == 'Beginner') ? 40 : 80;
+    int hardPity = (poolCategory == 'Weapon' || poolCategory == 'Beginner')
+        ? 40
+        : 80;
 
-    subBanners.add(SubBannerGroup(
-      bannerName: poolName,
-      poolCategory: poolCategory,
-      upTargetName: displayUpName,
-      periodStr: '已同步',
-      totalPulls: totalRawPulls,
-      effectivePulls: poolEffectivePulls[poolName]!,
-      currentPity: poolFinalGlobalPity[poolName]!,
-      hardPityLimit: hardPity,
-      isWeapon: isWeaponPool,
-      freePullsCount: poolFreePullsCount[poolName]!,
-      sixStars: poolSixStars[poolName]!.reversed.toList(),
-      free10SixStars: poolFree10SixStars[poolName]!.reversed.toList(),
-      regularFourStarCount: poolRegular4Stars[poolName] ?? 0,
-      regularFiveStarCount: poolRegular5Stars[poolName] ?? 0,
-      freeFourStarCount: poolFree4Stars[poolName] ?? 0,
-      freeFiveStarCount: poolFree5Stars[poolName] ?? 0,
-    ));
+    subBanners.add(
+      SubBannerGroup(
+        bannerName: poolName,
+        poolCategory: poolCategory,
+        upTargetName: displayUpName,
+        periodStr: '已同步',
+        totalPulls: totalRawPulls,
+        effectivePulls: poolEffectivePulls[poolName]!,
+        currentPity: poolFinalGlobalPity[poolName]!,
+        hardPityLimit: hardPity,
+        isWeapon: isWeaponPool,
+        freePullsCount: poolFreePullsCount[poolName]!,
+        sixStars: poolSixStars[poolName]!.reversed.toList(),
+        free10SixStars: poolFree10SixStars[poolName]!.reversed.toList(),
+        regularFourStarCount: poolRegular4Stars[poolName] ?? 0,
+        regularFiveStarCount: poolRegular5Stars[poolName] ?? 0,
+        freeFourStarCount: poolFree4Stars[poolName] ?? 0,
+        freeFiveStarCount: poolFree5Stars[poolName] ?? 0,
+      ),
+    );
   }
 
   return subBanners;

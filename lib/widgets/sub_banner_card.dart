@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
-// 引入資料模型
+
 import '../models/gacha_record.dart';
+import '../widgets/rarity_distribution_bar.dart';
+import '../dialogs/sub_banner_stats_dialog.dart';
 
 class SubBannerCard extends StatelessWidget {
   final SubBannerGroup banner;
@@ -18,7 +20,8 @@ class SubBannerCard extends StatelessWidget {
     this.exportConfig,
   });
 
-  // 抽出原本的顏色計算邏輯
+  /// 根據墊抽數決定保底進度的顏色。
+  /// 30 抽以下為綠色、31～60 抽為橘色、60 抽以上為紅色。
   static Color getPityColor(int pity) {
     if (pity <= 30) return const Color(0xFF10B981);
     if (pity <= 60) return const Color(0xFFF59E0B);
@@ -27,6 +30,7 @@ class SubBannerCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 計算下一個免費贈送節點，武器池與角色池使用不同累積規則。
     String nextMilestoneHint;
     if (banner.isWeapon) {
       final int nextTarget = banner.effectivePulls < 180
@@ -58,67 +62,115 @@ class SubBannerCard extends StatelessWidget {
             child: Builder(
               builder: (context) {
                 // 判斷是否為手機版螢幕 (寬度小於 600)
-                final isMobileCard = forceDesktop ? false : (MediaQuery.of(context).size.width < 600);
+                final isMobileCard = forceDesktop
+                    ? false
+                    : (MediaQuery.of(context).size.width < 600);
 
                 final titleRow = Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFCC00),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
                         banner.isWeapon ? 'WEAPON' : 'POOL',
-                        style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w900, fontSize: 10),
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 10,
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
                     Text(
                       '【${banner.bannerName}】',
-                      style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: Colors.white),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Text(
                       banner.upTargetName,
-                      style: const TextStyle(fontSize: 12, color: Color(0xFFFFCC00), fontWeight: FontWeight.w600),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFFFFCC00),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ],
                 );
 
-                final bool hasFreeMechanic = banner.poolCategory == 'Special' || banner.poolCategory == 'Refactor';
+                final bool hasFreeMechanic =
+                    banner.poolCategory == 'Special' ||
+                    banner.poolCategory == 'Refactor';
 
                 // 動態決定標籤的前綴文字
                 final String pullPrefix = hasFreeMechanic ? '常規投入' : '本池投入';
                 final String starPrefix = hasFreeMechanic ? '常規 6★' : '本池 6★';
 
-                // 準備要在卡片上顯示的標籤
+                // 建立卡片數據標籤。
                 List<Widget> coreBadges = [];
 
                 if (forceDesktop && exportConfig != null) {
                   // === 導出圖片模式：根據玩家設定攤開數據 ===
-                  coreBadges.add(_buildBannerBadge(pullPrefix, '${banner.regularPulls} 抽', isHighlight: true));
+                  coreBadges.add(
+                    _buildBannerBadge(
+                      pullPrefix,
+                      '${banner.regularPulls} 抽',
+                      isHighlight: true,
+                    ),
+                  );
                   String starText = '${banner.regularSixStarCount} 個';
-                  if (exportConfig!['showUpOff'] == true && banner.regularSixStarCount > 0) {
-                    starText += ' (${banner.regularUpCount} UP / ${banner.regularOffCount} 歪)';
+                  if (exportConfig!['showUpOff'] == true &&
+                      banner.regularSixStarCount > 0) {
+                    starText +=
+                        ' (${banner.regularUpCount} UP / ${banner.regularOffCount} 歪)';
                   }
                   coreBadges.add(_buildBannerBadge(starPrefix, starText));
-                  if (exportConfig!['showAvg'] == true && banner.regularSixStarCount > 0) {
-                    coreBadges.add(_buildBannerBadge('常規平均', banner.regularAvgStr));
+                  if (exportConfig!['showAvg'] == true &&
+                      banner.regularSixStarCount > 0) {
+                    coreBadges.add(
+                      _buildBannerBadge('常規平均', banner.regularAvgStr),
+                    );
                   }
-                  if (exportConfig!['showRate'] == true && banner.regularSixStarCount > 0) {
-                    coreBadges.add(_buildBannerBadge('常規彩率', banner.regularRateStr));
+                  if (exportConfig!['showRate'] == true &&
+                      banner.regularSixStarCount > 0) {
+                    coreBadges.add(
+                      _buildBannerBadge('常規彩率', banner.regularRateStr),
+                    );
                   }
                 } else {
                   // === App 內一般模式：顯示「投入、6★、全部數據按鈕」 ===
                   coreBadges = [
-                    _buildBannerBadge(pullPrefix, '${banner.regularPulls} 抽', isHighlight: true),
-                    _buildBannerBadge(starPrefix, '${banner.regularSixStarCount} 個'),
+                    _buildBannerBadge(
+                      pullPrefix,
+                      '${banner.regularPulls} 抽',
+                      isHighlight: true,
+                    ),
+                    _buildBannerBadge(
+                      starPrefix,
+                      '${banner.regularSixStarCount} 個',
+                    ),
                     GestureDetector(
-                      onTap: () => _showStatsDialog(context, banner),
+                      onTap: () {
+                        showDialog(
+                          context: context,
+                          builder: (_) => SubBannerStatsDialog(banner: banner),
+                        );
+                      },
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
                         decoration: BoxDecoration(
                           color: const Color(0xFFA855F7).withAlpha(38),
                           borderRadius: BorderRadius.circular(6),
@@ -127,22 +179,41 @@ class SubBannerCard extends StatelessWidget {
                         child: const Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.bar_chart, color: Color(0xFFD8B4FE), size: 14),
+                            Icon(
+                              Icons.bar_chart,
+                              color: Color(0xFFD8B4FE),
+                              size: 14,
+                            ),
                             SizedBox(width: 4),
-                            Text('全部數據', style: TextStyle(color: Color(0xFFD8B4FE), fontWeight: FontWeight.bold, fontSize: 12)),
+                            Text(
+                              '全部數據',
+                              style: TextStyle(
+                                color: Color(0xFFD8B4FE),
+                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                              ),
+                            ),
                           ],
                         ),
                       ),
-                    )
+                    ),
                   ];
                 }
-                // 準備稀有度條形圖 (移至卡片頂部區域)
-                final bool showRarity = forceDesktop && (exportConfig?['showRarityBar'] == true) && banner.regularPulls > 0;
+                // 依匯出設定決定是否顯示稀有度分布。
+                final bool showRarity =
+                    forceDesktop &&
+                    (exportConfig?['showRarityBar'] == true) &&
+                    banner.regularPulls > 0;
                 final Widget rarityBarWidget = showRarity
                     ? Padding(
-                  padding: const EdgeInsets.only(top: 16),
-                  child: _buildRarityBar(banner.regularPulls, banner.regularSixStarCount, banner.regularFiveStarCount, banner.regularFourStarCount),
-                )
+                        padding: const EdgeInsets.only(top: 16),
+                        child: RarityDistributionBar(
+                          total: banner.regularPulls,
+                          stars6: banner.regularSixStarCount,
+                          stars5: banner.regularFiveStarCount,
+                          stars4: banner.regularFourStarCount,
+                        ),
+                      )
                     : const SizedBox.shrink();
 
                 if (isMobileCard) {
@@ -190,7 +261,11 @@ class SubBannerCard extends StatelessWidget {
                     // 根據卡池分類，將啟程尋訪的文字改為「保底」
                     Text(
                       banner.poolCategory == 'Beginner' ? '保底' : '小保底',
-                      style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 12),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                      ),
                     ),
                     Text(
                       '已墊 ${banner.currentPity} / ${banner.hardPityLimit} 抽',
@@ -206,10 +281,15 @@ class SubBannerCard extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(4),
                   child: LinearProgressIndicator(
-                    value: (banner.currentPity / banner.hardPityLimit).clamp(0.0, 1.0),
+                    value: (banner.currentPity / banner.hardPityLimit).clamp(
+                      0.0,
+                      1.0,
+                    ),
                     minHeight: 8,
                     backgroundColor: const Color(0xFF252732),
-                    valueColor: AlwaysStoppedAnimation<Color>(getPityColor(banner.currentPity)),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      getPityColor(banner.currentPity),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -217,13 +297,21 @@ class SubBannerCard extends StatelessWidget {
                   alignment: Alignment.centerRight,
                   child: Text(
                     nextMilestoneHint,
-                    style: const TextStyle(color: Color(0xFFA855F7), fontSize: 11, fontWeight: FontWeight.w600),
+                    style: const TextStyle(
+                      color: Color(0xFFA855F7),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
                 const Text(
                   '本池 6★ 抽卡記錄',
-                  style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold, fontSize: 12),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 if (banner.sixStars.isEmpty)
@@ -241,15 +329,23 @@ class SubBannerCard extends StatelessWidget {
                     ),
                   )
                 else
-                  ...banner.sixStars.map((item) => _buildPityPillRow(item, banner.hardPityLimit)),
-                // 控制免費區塊與分隔線的顯示
+                  ...banner.sixStars.map(
+                    (item) => _buildPityPillRow(item, banner.hardPityLimit),
+                  ),
+                // 符合免費卡池及顯示條件時，才渲染免費抽卡區塊。
                 Builder(
                   builder: (context) {
-                    final bool isFreePool = banner.poolCategory == 'Special' || banner.poolCategory == 'Refactor';
-                    final bool hasFreeData = banner.effectivePulls > 0 || banner.freePullsCount > 0;
-                    final bool isEnabledInSettings = forceDesktop ? (exportConfig?['showFreePulls'] == true) : true;
+                    // 只有 Special 與 Refactor 卡池有免費抽，採用常規投入統計名稱。
+                    final bool isFreePool =
+                        banner.poolCategory == 'Special' ||
+                        banner.poolCategory == 'Refactor';
+                    final bool hasFreeData =
+                        banner.effectivePulls > 0 || banner.freePullsCount > 0;
+                    final bool isEnabledInSettings = forceDesktop
+                        ? (exportConfig?['showFreePulls'] == true)
+                        : true;
 
-                    // 上方條件都滿足，才一起渲染「分隔線」與「內容」
+                    // 分隔線與免費抽卡內容共用相同的顯示條件。
                     if (isFreePool && hasFreeData && isEnabledInSettings) {
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,11 +370,15 @@ class SubBannerCard extends StatelessWidget {
   }
 
   // ==========================================================================
-  // 內部輔助 UI 元件 (Helper Widgets)
+  // Helper Widgets
   // ==========================================================================
 
   /// 構建卡池標題列下方的小數據標籤 (如：本池投入、平均出彩)
-  Widget _buildBannerBadge(String label, String value, {bool isHighlight = false}) {
+  Widget _buildBannerBadge(
+    String label,
+    String value, {
+    bool isHighlight = false,
+  }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
@@ -326,7 +426,11 @@ class SubBannerCard extends StatelessWidget {
                 border: Border.all(color: const Color(0xFFA855F7), width: 1.5),
               ),
               alignment: Alignment.center,
-              child: const Icon(Icons.card_giftcard, color: Color(0xFFD8B4FE), size: 18),
+              child: const Icon(
+                Icons.card_giftcard,
+                color: Color(0xFFD8B4FE),
+                size: 18,
+              ),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -359,15 +463,17 @@ class SubBannerCard extends StatelessWidget {
     }
 
     // 常規抽卡紀錄樣式
-    final barColor = item.isFree ? const Color(0xFF3B82F6) : getPityColor(item.pityCount);
+    final barColor = item.isFree
+        ? const Color(0xFF3B82F6)
+        : getPityColor(item.pityCount);
 
-    final avatarUrl = characterAvatarMap[item.name] ?? weaponAvatarMap[item.name];
+    final avatarUrl =
+        characterAvatarMap[item.name] ?? weaponAvatarMap[item.name];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          // 1. 角色/武器頭像區塊
           Container(
             width: 36,
             height: 36,
@@ -375,32 +481,41 @@ class SubBannerCard extends StatelessWidget {
               shape: BoxShape.circle,
               color: const Color(0xFF262834),
               border: Border.all(
-                color: item.isFree ? const Color(0xFF3B82F6) : const Color(0xFFFFCC00),
+                color: item.isFree
+                    ? const Color(0xFF3B82F6)
+                    : const Color(0xFFFFCC00),
                 width: 1.5,
               ),
             ),
             child: ClipOval(
               child: avatarUrl != null
                   ? Image.network(
-                avatarUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Center(
-                  child: Text(
-                    item.name.isNotEmpty ? item.name[0] : '?',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFFCC00), fontSize: 13),
-                  ),
-                ),
-              )
+                      avatarUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Center(
+                        child: Text(
+                          item.name.isNotEmpty ? item.name[0] : '?',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFFFFCC00),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    )
                   : Center(
-                child: Text(
-                  item.name.isNotEmpty ? item.name[0] : '?',
-                  style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFFFFCC00), fontSize: 13),
-                ),
-              ),
+                      child: Text(
+                        item.name.isNotEmpty ? item.name[0] : '?',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFFFFCC00),
+                          fontSize: 13,
+                        ),
+                      ),
+                    ),
             ),
           ),
           const SizedBox(width: 10),
-          // 2. 名稱與日期文字區塊
           SizedBox(
             width: 84,
             child: Column(
@@ -409,13 +524,18 @@ class SubBannerCard extends StatelessWidget {
                 Text(
                   item.name,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
                 ),
-                Text(item.dateStr, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+                Text(
+                  item.dateStr,
+                  style: const TextStyle(color: Colors.white38, fontSize: 10),
+                ),
               ],
             ),
           ),
-          // 3. 動態長度的抽數進度條區塊
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -433,15 +553,22 @@ class SubBannerCard extends StatelessWidget {
                     children: [
                       Container(
                         width: barWidth,
-                        decoration: BoxDecoration(color: barColor, borderRadius: BorderRadius.circular(12)),
+                        decoration: BoxDecoration(
+                          color: barColor,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
                       Positioned(
                         left: isBarTooShort ? barWidth + 6 : null,
-                        right: isBarTooShort ? null : (constraints.maxWidth - barWidth) + 10,
+                        right: isBarTooShort
+                            ? null
+                            : (constraints.maxWidth - barWidth) + 10,
                         child: Text(
                           '${item.pityCount} 抽',
                           style: TextStyle(
-                            color: isBarTooShort ? Colors.white70 : Colors.black,
+                            color: isBarTooShort
+                                ? Colors.white70
+                                : Colors.black,
                             fontWeight: FontWeight.w900,
                             fontSize: 11,
                           ),
@@ -454,27 +581,42 @@ class SubBannerCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // 4. 右側狀態小標籤
           if (item.isFree) ...[
-            _buildTagBadge('${item.freePhase ?? 30}抽免', const Color(0xFF3B82F6)),
+            _buildTagBadge(
+              '${item.freePhase ?? 30}抽免',
+              const Color(0xFF3B82F6),
+            ),
             if (item.isUp != null) ...[
               const SizedBox(width: 6),
-              _buildTagBadge(item.isUp! ? 'UP' : '歪', item.isUp! ? const Color(0xFFFFCC00) : const Color(0xFFEF4444)),
+              _buildTagBadge(
+                item.isUp! ? 'UP' : '歪',
+                item.isUp! ? const Color(0xFFFFCC00) : const Color(0xFFEF4444),
+              ),
             ],
           ] else if (item.isUp == null) ...[
             _buildTagBadge('未知', Colors.white54),
           ] else ...[
-            _buildTagBadge(item.isUp! ? 'UP' : '歪', item.isUp! ? const Color(0xFFFFCC00) : const Color(0xFFEF4444)),
+            _buildTagBadge(
+              item.isUp! ? 'UP' : '歪',
+              item.isUp! ? const Color(0xFFFFCC00) : const Color(0xFFEF4444),
+            ),
           ],
         ],
       ),
     );
   }
 
-  /// 構建 30 抽後贈送的十連尋訪中，若未出 6★ 時的「未出彩」佔位提示列
-  Widget _buildFreeTenPullsSection(BuildContext context, SubBannerGroup banner) {
-    if (banner.poolCategory != 'Special' && banner.poolCategory != 'Refactor') return const SizedBox.shrink();
-    if (banner.effectivePulls == 0 && banner.freePullsCount == 0) return const SizedBox.shrink();
+  /// 構建贈送的十連尋訪中，若未出 6★ 時的「未出彩」佔位提示列
+  Widget _buildFreeTenPullsSection(
+    BuildContext context,
+    SubBannerGroup banner,
+  ) {
+    if (banner.poolCategory != 'Special' && banner.poolCategory != 'Refactor') {
+      return const SizedBox.shrink();
+    }
+    if (banner.effectivePulls == 0 && banner.freePullsCount == 0) {
+      return const SizedBox.shrink();
+    }
 
     // 依據卡池分類設定最大值與節點
     final bool isRefactor = banner.poolCategory == 'Refactor';
@@ -482,7 +624,11 @@ class SubBannerCard extends StatelessWidget {
     final List<int> milestones = isRefactor ? [30, 60, 90] : [30];
 
     final int triggeredPhases = banner.freePullsCount ~/ 10;
-    final double progressRatio = (banner.effectivePulls / maxPulls).clamp(0.0, 1.0);
+    // 將進度限制在 0～100%，避免超過最大抽數時溢出。
+    final double progressRatio = (banner.effectivePulls / maxPulls).clamp(
+      0.0,
+      1.0,
+    );
     final int displayPulls = banner.effectivePulls.clamp(0, maxPulls);
 
     return Column(
@@ -494,7 +640,11 @@ class SubBannerCard extends StatelessWidget {
           children: [
             const Text(
               '階段贈送十連',
-              style: TextStyle(color: Color(0xFF60A5FA), fontSize: 12, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                color: Color(0xFF60A5FA),
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
             ),
             Text(
               '$displayPulls / $maxPulls 抽',
@@ -527,7 +677,10 @@ class SubBannerCard extends StatelessWidget {
                       bottom: 5,
                       child: Container(
                         height: 6,
-                        decoration: BoxDecoration(color: const Color(0xFF2A2D36), borderRadius: BorderRadius.circular(3)),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF2A2D36),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
                       ),
                     ),
                     // 填滿進度條 (藍色)
@@ -537,7 +690,10 @@ class SubBannerCard extends StatelessWidget {
                       width: constraints.maxWidth * progressRatio,
                       child: Container(
                         height: 6,
-                        decoration: BoxDecoration(color: const Color(0xFF60A5FA), borderRadius: BorderRadius.circular(3)),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF60A5FA),
+                          borderRadius: BorderRadius.circular(3),
+                        ),
                       ),
                     ),
                     // 繪製各個節點與上方數字
@@ -552,26 +708,32 @@ class SubBannerCard extends StatelessWidget {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // 上方的進度數字 (30, 60, 90)
                               Text(
                                 '$node',
                                 style: TextStyle(
-                                  color: isReached ? const Color(0xFF60A5FA) : Colors.white54,
+                                  color: isReached
+                                      ? const Color(0xFF60A5FA)
+                                      : Colors.white54,
                                   fontSize: 10,
                                   fontWeight: FontWeight.bold,
                                 ),
                                 textAlign: TextAlign.center,
                               ),
                               const SizedBox(height: 4),
-                              // 圓點
+
                               Container(
                                 width: 12,
                                 height: 12,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: isReached ? const Color(0xFF60A5FA) : const Color(0xFF1E2029),
+                                  color: isReached
+                                      ? const Color(0xFF60A5FA)
+                                      : const Color(0xFF1E2029),
                                   border: Border.all(
-                                    color: isReached ? Colors.white : const Color(0xFF60A5FA).withAlpha(128),
+                                    color: isReached
+                                        ? Colors.white
+                                        : const Color(0xFF60A5FA)
+                                              .withAlpha(128),
                                     width: 2,
                                   ),
                                 ),
@@ -603,7 +765,9 @@ class SubBannerCard extends StatelessWidget {
               return _buildEmptyFreeRecordRow(currentPhase);
             } else {
               return Column(
-                children: phaseSixStars.map((sixStar) => _buildPityPillRow(sixStar, 10)).toList(),
+                children: phaseSixStars
+                    .map((sixStar) => _buildPityPillRow(sixStar, 10))
+                    .toList(),
               );
             }
           }),
@@ -617,7 +781,6 @@ class SubBannerCard extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(
         children: [
-          // 1. 佔位頭像 (問號)
           Container(
             width: 36,
             height: 36,
@@ -627,16 +790,24 @@ class SubBannerCard extends StatelessWidget {
               border: Border.all(color: const Color(0xFF3B82F6), width: 1.5),
             ),
             child: const Center(
-              child: Icon(Icons.help_outline, color: Color(0xFF3B82F6), size: 18),
+              child: Icon(
+                Icons.help_outline,
+                color: Color(0xFF3B82F6),
+                size: 18,
+              ),
             ),
           ),
           const SizedBox(width: 10),
-          // 2. 文字區塊
+
           const SizedBox(
             width: 84,
             child: Text(
               '未出 6★',
-              style: TextStyle(color: Colors.white54, fontWeight: FontWeight.bold, fontSize: 13),
+              style: TextStyle(
+                color: Colors.white54,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
             ),
           ),
           Expanded(
@@ -650,7 +821,7 @@ class SubBannerCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          // 3. 階段標籤
+
           _buildTagBadge('$currentPhase抽免', const Color(0xFF3B82F6)),
         ],
       ),
@@ -668,141 +839,12 @@ class SubBannerCard extends StatelessWidget {
       ),
       child: Text(
         text,
-        style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold),
-      ),
-    );
-  }
-  /// 彈出詳細數據面板視窗
-  void _showStatsDialog(BuildContext context, SubBannerGroup banner) {
-    final bool hasFreeMechanic = banner.poolCategory == 'Special' || banner.poolCategory == 'Refactor';
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF181920),
-          surfaceTintColor: Colors.transparent,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-            side: const BorderSide(color: Colors.white12),
-          ),
-          title: Text(
-            '【${banner.bannerName}】詳細統計',
-            style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // --- 常規尋訪區塊 ---
-              Text(
-                hasFreeMechanic ? '🔸 常規尋訪' : '🔸 尋訪統計',
-                style: const TextStyle(color: Color(0xFFFFCC00), fontSize: 13, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 8),
-              _buildDialogStatRow('總計投入', '${banner.regularPulls} 抽'),
-              _buildDialogStatRow('獲得 6★', '${banner.regularSixStarCount} 個'),
-              if (banner.regularSixStarCount > 0) ...[
-                _buildDialogStatRow('出彩明細', '${banner.regularUpCount} UP / ${banner.regularOffCount} 歪'),
-                _buildDialogStatRow('平均出彩', banner.regularAvgStr),
-                _buildDialogStatRow('常規彩率', banner.regularRateStr),
-              ],
-              if (banner.regularPulls > 0)
-                _buildRarityBar(
-                    banner.regularPulls,
-                    banner.regularSixStarCount,
-                    banner.regularFiveStarCount,
-                    banner.regularFourStarCount
-                ),
-
-              // --- 免費尋訪區塊 (若有) ---
-              if (banner.freePulls > 0) ...[
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(color: Colors.white12, height: 1),
-                ),
-                const Text('🔹 階段免費尋訪', style: TextStyle(color: Color(0xFF60A5FA), fontSize: 13, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                _buildDialogStatRow('總計投入', '${banner.freePulls} 抽'),
-                _buildDialogStatRow('獲得 6★', '${banner.freeSixStarCount} 個'),
-                if (banner.freeSixStarCount > 0) ...[
-                  _buildDialogStatRow('出彩明細', '${banner.freeUpCount} UP / ${banner.freeOffCount} 歪'),
-                  _buildDialogStatRow('平均出彩', banner.freeAvgStr),
-                  _buildDialogStatRow('免費彩率', banner.freeRateStr),
-                ],
-              ],
-              if (banner.freePulls > 0)
-                _buildRarityBar(
-                    banner.freePulls,
-                    banner.freeSixStarCount,
-                    banner.freeFiveStarCount,
-                    banner.freeFourStarCount
-                ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('關閉', style: TextStyle(color: Colors.white70)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // 小視窗內的排版輔助元件
-  Widget _buildDialogStatRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13)),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
-  /// 繪製橫向堆疊條形圖 (稀有度分布)
-  Widget _buildRarityBar(int total, int stars6, int stars5, int stars4) {
-    if (total == 0) return const SizedBox.shrink();
-
-    // 如果有 3★ 或其他星級，算進 others
-    final int others = total - stars6 - stars5 - stars4;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 6),
-        const Text('稀有度分布', style: TextStyle(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        ClipRRect(
-          borderRadius: BorderRadius.circular(4),
-          child: SizedBox(
-            height: 10,
-            child: Row(
-              children: [
-                if (stars6 > 0) Expanded(flex: stars6, child: Container(color: const Color(0xFFFFCC00))),
-                if (stars5 > 0) Expanded(flex: stars5, child: Container(color: const Color(0xFFA855F7))),
-                if (stars4 > 0) Expanded(flex: stars4, child: Container(color: const Color(0xFF60A5FA))),
-                if (others > 0) Expanded(flex: others, child: Container(color: Colors.white24)),
-              ],
-            ),
-          ),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
         ),
-        const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text('6★ ${(stars6 / total * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Color(0xFFFFCC00), fontSize: 11, fontWeight: FontWeight.bold)),
-            Text('5★ ${(stars5 / total * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Color(0xFFA855F7), fontSize: 11, fontWeight: FontWeight.bold)),
-            Text('4★ ${(stars4 / total * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Color(0xFF60A5FA), fontSize: 11, fontWeight: FontWeight.bold)),
-            if (others > 0)
-              Text('其他 ${(others / total * 100).toStringAsFixed(1)}%', style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold)),
-          ],
-        ),
-        const SizedBox(height: 6),
-      ],
+      ),
     );
   }
 }

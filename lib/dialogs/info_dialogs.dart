@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-/// 負責存放純靜態、說明性質的對話框 (免責聲明、使用說明)
+/// 集中管理應用程式中的靜態說明對話框，
+/// 包含免責聲明、使用說明與常見問題。
 class InfoDialogs {
-  // ==========================================================================
-  // 免責聲明對話框
-  // ==========================================================================
+  /// 顯示免責聲明與使用條款。
   static void showDisclaimerDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -16,7 +15,14 @@ class InfoDialogs {
             children: [
               Icon(Icons.info_outline, color: Color(0xFF60A5FA), size: 22),
               SizedBox(width: 8),
-              Text('免責聲明與使用條款', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(
+                '免責聲明與使用條款',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
             ],
           ),
           content: SizedBox(
@@ -26,11 +32,26 @@ class InfoDialogs {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildDisclaimerItem('1. 適用伺服器與無關聯聲明', '本程式為玩家自製的免費輔助工具，目前僅支援「國際服 (Gryphline)」的資料解析，與《明日方舟：終末地》官方無任何附屬、授權或合作關係。'),
-                  _buildDisclaimerItem('2. 圖片版權與非商業用途', '程式內使用的遊戲圖像、角色名稱等相關素材，版權皆屬官方所有。本工具僅供玩家個人紀錄與交流使用，嚴禁提取本專案中的「官方素材」進行任何形式的商業用途。'),
-                  _buildDisclaimerItem('3. 帳號與資安保證', '本程式不會刻意將您的登入憑證 (Token) 寫入本地設定或備份檔中。Token 僅於同步當下在記憶體中運作，不會上傳至第三方伺服器。儘管如此，仍請您妥善保管 Token，切勿截圖分享或張貼於公共空間。'),
-                  _buildDisclaimerItem('4. 資料準確性', '數據取自官方 API。若官方未來修改規則導致程式無法同步或數據遺失，開發者不承擔相關責任。'),
-                  _buildDisclaimerItem('5. 隱私安全', '基於隱私保護，本程式未提供「雲端同步」功能，亦不會追蹤、收集或向外傳送任何設備資訊。您的尋訪紀錄與 UID 均「僅單純儲存於設備本地端」。這也是為何本程式採用實體 JSON 檔案作為跨設備轉移資料的唯一手段，將資料的完整控制權完全交還給您。'),
+                  _buildDisclaimerItem(
+                    '1. 適用伺服器與無關聯聲明',
+                    '本程式為玩家自製的免費輔助工具，目前僅支援「國際服 (Gryphline)」的資料解析，與《明日方舟：終末地》官方無任何附屬、授權或合作關係。',
+                  ),
+                  _buildDisclaimerItem(
+                    '2. 圖片版權與非商業用途',
+                    '程式內使用的遊戲圖像、角色名稱等相關素材，版權皆屬官方所有。本工具僅供玩家個人紀錄與交流使用，嚴禁提取本專案中的「官方素材」進行任何形式的商業用途。',
+                  ),
+                  _buildDisclaimerItem(
+                    '3. 帳號與資安保證',
+                    '本程式不會刻意將您的登入憑證（Token）寫入本機設定或備份檔。同步時，Token 僅在程式記憶體中暫時使用，並傳送至 Gryphline 官方 API 進行帳號驗證及尋訪紀錄取得。本程式目前未將帳號 Token 傳送至第三方字典服務。儘管如此，仍請您妥善保管 Token，切勿截圖分享或張貼於公共空間。',
+                  ),
+                  _buildDisclaimerItem(
+                    '4. 資料準確性',
+                    '數據取自官方 API。若官方未來修改規則導致程式無法同步或數據遺失，開發者不承擔相關責任。',
+                  ),
+                  _buildDisclaimerItem(
+                    '5. 隱私安全',
+                    '本程式不提供雲端帳號同步功能，尋訪紀錄與 UID 均儲存於設備本地端。為取得遊戲尋訪紀錄，程式會與 Gryphline 官方 API 通訊；此外，程式也會連線至 GitHub 下載遊戲資料字典。上述網路連線可能涉及一般連線資訊（例如 IP 位址）。本程式不會刻意收集或向第三方字典服務傳送您的帳號 Token 或尋訪紀錄。',
+                  ),
                   const Padding(
                     padding: EdgeInsets.only(top: 8, bottom: 16),
                     child: Divider(color: Colors.white12),
@@ -38,27 +59,66 @@ class InfoDialogs {
                   const Center(
                     child: Text(
                       'Made by wes-106  |  v1.2.0',
-                      style: TextStyle(color: Colors.white38, fontSize: 12, letterSpacing: 0.5),
+                      style: TextStyle(
+                        color: Colors.white38,
+                        fontSize: 12,
+                        letterSpacing: 0.5,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 6),
 
-                  // GitHub 連結
+                  // GitHub 專案連結。
                   Center(
                     child: InkWell(
                       onTap: () async {
-                        final Uri url = Uri.parse('https://github.com/wes-106/Endfield-Gacha-Tracker');
-                        if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
-                          debugPrint('Could not launch $url');
+                        final Uri url = Uri.parse(
+                          'https://github.com/wes-106/Endfield-Gacha-Tracker',
+                        );
+
+                        try {
+                          final messenger = ScaffoldMessenger.of(context);
+
+                          final bool launched = await launchUrl(
+                            url,
+                            mode: LaunchMode.externalApplication,
+                          );
+
+                          if (!launched && context.mounted) {
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('無法開啟網頁，請確認是否安裝或設定預設瀏覽器！'),
+                                backgroundColor: Color(0xFFEF4444),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('無法開啟網頁，發生預期外的系統錯誤！'),
+                                backgroundColor: Color(0xFFEF4444),
+                              ),
+                            );
+                          }
+
+                          debugPrint('GitHub 網址開啟失敗：$e');
                         }
                       },
                       borderRadius: BorderRadius.circular(4),
                       child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.code, color: Color(0xFF60A5FA), size: 14),
+                            const Icon(
+                              Icons.code,
+                              color: Color(0xFF60A5FA),
+                              size: 14,
+                            ),
                             const SizedBox(width: 6),
                             const Text(
                               '前往 GitHub 專案與檢查更新',
@@ -80,9 +140,17 @@ class InfoDialogs {
           ),
           actions: [
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF3B82F6)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF3B82F6),
+              ),
               onPressed: () => Navigator.pop(context),
-              child: const Text('我已了解', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: const Text(
+                '我已了解',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         );
@@ -90,9 +158,7 @@ class InfoDialogs {
     );
   }
 
-  // ==========================================================================
-  // 使用說明對話框
-  // ==========================================================================
+  /// 顯示應用程式使用說明與常見問題。
   static void showInstructionsDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -103,7 +169,14 @@ class InfoDialogs {
             children: [
               Icon(Icons.menu_book, color: Color(0xFF10B981), size: 22),
               SizedBox(width: 8),
-              Text('使用說明與常見問題', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(
+                '使用說明與常見問題',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
             ],
           ),
           content: SizedBox(
@@ -116,59 +189,69 @@ class InfoDialogs {
                   _buildDisclaimerItem(
                     '1. 尋訪紀錄保存機制',
                     '官方伺服器僅會保留「最近 90 天內」的尋訪紀錄，超過此期限的歷史數據將無法再從官方獲取，若初次同步無法顯示更早之前的紀錄為正常現象。\n'
-                    '只要盡早將紀錄同步至本程式，數據便會永久交由您的本地設備保存，不再受 90 天限制。請注意：若設備損毀、遺失，或您主動清除應用程式資料，本地的歷史紀錄仍會消失，請善用匯出備份功能。',
+                        '只要盡早將紀錄同步至本程式，數據便會永久交由您的本地設備保存，不再受 90 天限制。請注意：若設備損毀、遺失，或您主動清除應用程式資料，本地的歷史紀錄仍會消失，請善用匯出備份功能。',
                   ),
                   _buildDisclaimerItem(
                     '2. 如何導入資料',
                     '① 點選右上角或側邊欄的「同步尋訪紀錄」\n'
-                    '② 點選「1. 登入官網」，在手機或系統預設瀏覽器內完成登入\n'
-                    '③ 【重要】請勿滑掉或關閉該瀏覽器，直接切回本程式\n'
-                    '④ 點選「2. 獲取 Token」，複製畫面上出現的整段代碼\n'
-                    '⑤ 將代碼貼入下方輸入框並點選「開始同步」即可',
+                        '② 點選「1. 登入官網」，在手機或系統預設瀏覽器內完成登入\n'
+                        '③ 【重要】請勿滑掉或關閉該瀏覽器，直接切回本程式\n'
+                        '④ 點選「2. 獲取 Token」，複製畫面上出現的整段代碼\n'
+                        '⑤ 將代碼貼入下方輸入框並點選「開始同步」即可',
                   ),
                   _buildDisclaimerItem(
                     '3. 閱讀數據與圖表',
                     '• 卡池分類：提供「特許、武庫、常駐、重構、啟程」五大類別，手機版可透過上方選單左右滑動查看。\n'
-                    '• 獨立計算：為確保機率準確，受保底機制影響的「常規尋訪」與無保底的「階段免費十連」獨立計算，避免數據污染。\n'
-                    '• 數據面板：點擊卡片或大類統計上的「全部數據」按鈕，可查看完整的 UP/歪明細、綜合彩率，以及 4★/5★/6★ 稀有度分布圖。',
+                        '• 獨立計算：為確保機率準確，受保底機制影響的「常規尋訪」與無保底的「階段免費十連」獨立計算，避免數據污染。\n'
+                        '• 數據面板：點擊卡片或大類統計上的「全部數據」按鈕，可查看完整的 UP/歪明細、綜合彩率，以及 4★/5★/6★ 稀有度分布圖。',
                   ),
                   _buildDisclaimerItem(
                     '4. 客製化圖片導出',
                     '點擊右上角的「導出圖片」後，您可以透過設定視窗右上角的「齒輪圖示」，自由開啟或關閉想在圖片中展示的數據標籤（如：UP/歪明細、彩率、稀有度分布圖等）。\n'
-                    '系統會記住您的圖表排版偏好，以及您為不同 UID 帳號所輸入的帳號名稱。',
+                        '系統會記住您的圖表排版偏好，以及您為不同 UID 帳號所輸入的帳號名稱。',
                   ),
                   _buildDisclaimerItem(
                     '5. 多帳號切換',
                     '每次同步時，程式會自動識別該次登入的角色 UID 與所屬伺服器。為避免跨伺服器紀錄互相干擾，系統會自動在 UID 後方加上伺服器代號進行區隔（例如 _2 代表亞服，_3 代表歐美服）。您可以隨時點選畫面上方的 UID 下拉選單快速切換不同伺服器的紀錄，無須重新登入。',
                   ),
-                  _buildRichDisclaimerItem(
-                    '6. 雙重資料保護機制',
-                    [
-                      const TextSpan(
-                        text: '為防止設備損壞導致資料遺失，本程式提供兩套獨立的備份系統：\n\n'
-                            '【自動備份】\n'
-                            '開啟開關後，每次同步都會在系統內部寫入最新的備份（電腦版存於下載資料夾或應用程式目錄，手機版存於內部私有目錄）。\n'
-                            '由於每次都是自動覆蓋舊檔不佔空間，此功能「主要用於應對日常同步異常或操作上的小差錯」，若不慎導致資料錯亂，可點擊「從最新的自動備份還原」快速復原。\n',
-                      ),
-                      const WidgetSpan(
-                        alignment: PlaceholderAlignment.middle,
-                        child: Padding(
-                          padding: EdgeInsets.only(right: 4.0),
-                          child: Icon(Icons.warning_rounded, color: Color(0xFFF59E0B), size: 16),
+                  _buildRichDisclaimerItem('6. 雙重資料保護機制', [
+                    const TextSpan(
+                      text:
+                          '為防止設備損壞導致資料遺失，本程式提供兩套獨立的備份系統：\n\n'
+                          '【自動備份】\n'
+                          '開啟開關後，每次同步都會在系統內部寫入最新的備份（電腦版存於下載資料夾或應用程式目錄，手機版存於內部私有目錄）。\n'
+                          '由於每次都是自動覆蓋舊檔不佔空間，此功能「主要用於應對日常同步異常或操作上的小差錯」，若不慎導致資料錯亂，可點擊「從最新的自動備份還原」快速復原。\n',
+                    ),
+                    const WidgetSpan(
+                      alignment: PlaceholderAlignment.middle,
+                      child: Padding(
+                        padding: EdgeInsets.only(right: 4.0),
+                        child: Icon(
+                          Icons.warning_rounded,
+                          color: Color(0xFFF59E0B),
+                          size: 16,
                         ),
                       ),
-                      const TextSpan(
-                        text: '注意：',
-                        style: TextStyle(color: Color(0xFFEF4444), fontWeight: FontWeight.bold),
+                    ),
+                    const TextSpan(
+                      text: '注意：',
+                      style: TextStyle(
+                        color: Color(0xFFEF4444),
+                        fontWeight: FontWeight.bold,
                       ),
-                      const TextSpan(
-                        text: '手機版（APK）若將應用程式解除安裝或清除 App 資料，內部的自動備份檔將會隨之被系統刪除，無法作為永久保存之用。\n\n',
-                      ),
-                      const TextSpan(
-                        text: '【手動匯出】\n'
-                            '點擊「匯出資料備份」會將當下紀錄存成專屬的 JSON 實體檔案，並讓您自選儲存位置。若要跨設備轉移資料或長期防護，請務必使用此功能。',
-                      ),
-                    ],
+                    ),
+                    const TextSpan(
+                      text: '手機版（APK）若將應用程式解除安裝或清除 App 資料，內部的自動備份檔將會隨之被系統刪除，無法作為永久保存之用。\n\n',
+                    ),
+                    const TextSpan(
+                      text:
+                          '【手動匯出】\n'
+                          '點擊「匯出資料備份」會將當下紀錄存成專屬的 JSON 實體檔案，並讓您自選儲存位置。若要跨設備轉移資料或長期防護，請務必使用此功能。',
+                    ),
+                  ]),
+                  _buildDisclaimerItem(
+                    '7. 重置與解除安裝 (Windows 電腦版)',
+                    '若您使用的是電腦版 (EXE) 並希望徹底清除資料或準備解除安裝，請在「資料備份與設定」視窗中點擊「清除所有本機資料」按鈕。這將會安全地刪除本機的快取與設定庫（不影響您手動匯出的備份檔）。執行關閉後，直接刪除應用程式資料夾即可達到無殘留的乾淨卸載。手機版用戶則可直接透過系統設定「清除資料」即可。',
                   ),
                 ],
               ),
@@ -176,9 +259,17 @@ class InfoDialogs {
           ),
           actions: [
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF10B981)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF10B981),
+              ),
               onPressed: () => Navigator.pop(context),
-              child: const Text('開始使用', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              child: const Text(
+                '開始使用',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
           ],
         );
@@ -186,22 +277,36 @@ class InfoDialogs {
     );
   }
 
-  // 輔助排版文字的私有 Widget
+  /// 建立一般說明項目，包含標題與純文字內容。
   static Widget _buildDisclaimerItem(String title, String content) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(title, style: const TextStyle(color: Color(0xFFFFCC00), fontWeight: FontWeight.bold, fontSize: 14)),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Color(0xFFFFCC00),
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
           const SizedBox(height: 4),
-          Text(content, style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5)),
+          Text(
+            content,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              height: 1.5,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // 專門用來處理帶有顏色與特效的免責聲明區塊
+  /// 建立包含多種文字樣式或圖示的說明項目。
   static Widget _buildRichDisclaimerItem(String title, List<InlineSpan> spans) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
@@ -210,12 +315,20 @@ class InfoDialogs {
         children: [
           Text(
             title,
-            style: const TextStyle(color: Color(0xFFFFCC00), fontWeight: FontWeight.bold, fontSize: 14),
+            style: const TextStyle(
+              color: Color(0xFFFFCC00),
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
           ),
           const SizedBox(height: 6),
           Text.rich(
             TextSpan(
-              style: const TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                height: 1.5,
+              ),
               children: spans,
             ),
           ),
