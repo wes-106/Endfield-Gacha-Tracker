@@ -6,7 +6,7 @@ import FlutterMacOS
 import Foundation
 
 import file_picker_darwin
-import isar_flutter_libs
+import isar_community_flutter_libs
 import shared_preferences_foundation
 import url_launcher_macos
 

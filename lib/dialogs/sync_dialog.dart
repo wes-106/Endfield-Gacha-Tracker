@@ -82,24 +82,24 @@ class _SyncDialogState extends State<SyncDialog> {
     onStatusChanged('正在獲取伺服器授權...');
 
     try {
-      // 使用原始 UID 與 OAuth Token 向鷹角取得 API 授權 Token。
+      // 1. 取得 API 授權 Token 與本機既有紀錄。
       final finalU8Token = await AuthService.fetchU8Token(realUid, oauthToken);
 
-      // 載入各卡池的本機紀錄，並彙整已存在的序號以避免重複取得。
-      final Map<String, List<Map<String, dynamic>>> localDataMap = {};
+      final Map<String, List<dynamic>> localDataMap = {};
       final Set<String> knownSeqIds = {};
 
       for (final config in appPoolConfigs) {
         final data = await LocalStorage.loadRecords(localDbUid, config.dbKey);
 
-        localDataMap[config.uiKey] = List<Map<String, dynamic>>.from(data);
+        localDataMap[config.uiKey] = List<dynamic>.from(data);
 
-        for (var record in data) {
+        for (final record in data) {
           knownSeqIds.add(record['seqId']?.toString() ?? '');
         }
       }
 
-      // 取得角色卡池的新紀錄。
+      // 2. 先完整取得所有遠端紀錄。
+      // 任一 API 請求失敗，都會在本機寫入前中斷同步。
       onStatusChanged('正在檢查角色卡池新紀錄...');
 
       final charRecordsMap = await _apiService.fetchAllCharacters(
@@ -108,18 +108,28 @@ class _SyncDialogState extends State<SyncDialog> {
         knownSeqIds,
       );
 
-      onStatusChanged('資料整理中...');
+      onStatusChanged('正在檢查武器卡池新紀錄...');
 
+      final rawWeaponRecords = await _apiService.fetchWeaponRecords(
+        finalU8Token,
+        serverId,
+        knownSeqIds,
+      );
+
+      // 3. 遠端資料皆已取得，先在記憶體完成所有卡池合併與解析。
+      onStatusChanged('資料整理與儲存中...');
+
+      final Map<String, List<dynamic>> mergedDataMap = {};
       final Map<String, List<SubBannerGroup>> newPools = {};
 
-      // 合併並儲存所有非武器卡池的紀錄。
+      // 合併並解析所有非武器卡池。
       for (final config in appPoolConfigs.where((c) => !c.isWeapon)) {
         final merged = LocalStorage.mergeRecords(
           localDataMap[config.uiKey]!,
           charRecordsMap[config.uiKey] ?? [],
         );
 
-        await LocalStorage.saveRecords(localDbUid, config.dbKey, merged);
+        mergedDataMap[config.dbKey] = merged;
 
         newPools[config.uiKey] = parseRawDataToModels(
           merged,
@@ -129,15 +139,7 @@ class _SyncDialogState extends State<SyncDialog> {
         );
       }
 
-      // 取得並合併武器卡池紀錄。
-      onStatusChanged('角色紀錄完成！\n正在檢查武器卡池新紀錄...');
-
-      final rawWeaponRecords = await _apiService.fetchWeaponRecords(
-        finalU8Token,
-        serverId,
-        knownSeqIds,
-      );
-
+      // 合併並解析武器卡池。
       final weaponConfig = appPoolConfigs.firstWhere(
         (config) => config.isWeapon,
       );
@@ -147,11 +149,7 @@ class _SyncDialogState extends State<SyncDialog> {
         rawWeaponRecords,
       );
 
-      await LocalStorage.saveRecords(
-        localDbUid,
-        weaponConfig.dbKey,
-        mergedWeapon,
-      );
+      mergedDataMap[weaponConfig.dbKey] = mergedWeapon;
 
       newPools[weaponConfig.uiKey] = parseRawDataToModels(
         mergedWeapon,
@@ -160,7 +158,10 @@ class _SyncDialogState extends State<SyncDialog> {
         poolCategory: weaponConfig.uiKey,
       );
 
-      // 自動備份失敗不影響已完成的資料同步。
+      // 4. 將所有卡池紀錄透過單一 Isar 交易寫入。
+      await LocalStorage.saveAllPoolsRecords(localDbUid, mergedDataMap);
+
+      // 5. 自動備份（失敗不影響已完成同步的資料）。
       bool backupSuccess = true;
 
       if (autoBackupEnabled) {
@@ -172,7 +173,7 @@ class _SyncDialogState extends State<SyncDialog> {
         }
       }
 
-      // 將同步完成的 UID 與各卡池資料交回呼叫端。
+      // 6. 將同步完成的 UID 與各卡池資料交回呼叫端。
       onSyncCompleted(localDbUid, newPools);
 
       if (backupSuccess) {

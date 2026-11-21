@@ -85,6 +85,7 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
     'showRate': true,
     'showRarityBar': true,
     'showFreePulls': true,
+    'showCrossPool': true,
   };
   Map<String, String> _savedAccountNames = {};
 
@@ -332,6 +333,8 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
           });
         },
         onSyncCompleted: (newUid, newPools) async {
+          if (!mounted) return;
+
           // 確保 newUid 一定帶有伺服器後綴
           final normalizedUid = newUid.contains('_') ? newUid : '${newUid}_2';
           setState(() {

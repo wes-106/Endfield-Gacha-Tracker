@@ -145,10 +145,26 @@ List<SubBannerGroup> parseRawDataToModels(
       }
 
       if (rarity == 6) {
+        final bool isFirstRegularSixStar = !poolSixStars[poolName]!.any(
+          (item) => !item.isMilestone,
+        );
+
+        final int localPity = poolLocalPity[poolName]!;
+        final int globalPity = globalPityCount;
+
+        // 在「特許尋訪」且為該池首個常規 6★，且跨池累計大於當池抽數時記錄
+        final int? crossPoolPulls =
+            (poolCategory == 'Special' &&
+                isFirstRegularSixStar &&
+                globalPity > localPity)
+            ? globalPity
+            : null;
+
         poolSixStars[poolName]!.add(
           SixStarPityItem(
             name: name,
-            pityCount: poolLocalPity[poolName]!,
+            pityCount: localPity,
+            crossPoolPulls: crossPoolPulls,
             isUp: isTargetUp,
             dateStr: dateStr,
           ),

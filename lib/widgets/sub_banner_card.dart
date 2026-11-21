@@ -533,9 +533,27 @@ class SubBannerCard extends StatelessWidget {
                   item.dateStr,
                   style: const TextStyle(color: Colors.white38, fontSize: 10),
                 ),
+                if (!item.isMilestone &&
+                    !item.isFree &&
+                    item.crossPoolPulls != null &&
+                    item.crossPoolPulls! > item.pityCount &&
+                    (!forceDesktop ||
+                        (exportConfig?['showCrossPool'] ?? true))) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    '跨池累計 ${item.crossPoolPulls} 抽',
+                    style: const TextStyle(
+                      color: Color(0xFFFBBF24),
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
+          const SizedBox(width: 8),
+
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -583,7 +601,7 @@ class SubBannerCard extends StatelessWidget {
           const SizedBox(width: 8),
           if (item.isFree) ...[
             _buildTagBadge(
-              '${item.freePhase ?? 30}抽免',
+              '${item.freePhase ?? 30}抽免十',
               const Color(0xFF3B82F6),
             ),
             if (item.isUp != null) ...[
@@ -756,7 +774,7 @@ class SubBannerCard extends StatelessWidget {
         // ==========================================
         if (triggeredPhases > 0)
           ...List.generate(triggeredPhases, (index) {
-            final int currentPhase = milestones[index];
+            final int currentPhase = milestones[triggeredPhases - 1 - index];
             final List<SixStarPityItem> phaseSixStars = banner.free10SixStars
                 .where((item) => item.freePhase == currentPhase)
                 .toList();
@@ -822,7 +840,7 @@ class SubBannerCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
 
-          _buildTagBadge('$currentPhase抽免', const Color(0xFF3B82F6)),
+          _buildTagBadge('$currentPhase抽免十', const Color(0xFF3B82F6)),
         ],
       ),
     );

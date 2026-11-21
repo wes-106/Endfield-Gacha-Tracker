@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 
@@ -72,26 +72,42 @@ class LocalStorage {
     return finalUids.toList();
   }
 
-  /// 將 API 取得的原始 JSON 紀錄轉換後寫入資料庫。
+  /// 將多個卡池的合併紀錄一次寫入同一個 Isar 交易中。
   ///
-  /// 若傳入的 UID 尚未包含區域後綴，預設補上 `_2`。
-  static Future<void> saveRecords(
+  /// 先將所有原始紀錄轉換為 GachaRecord，確認轉換成功後，
+  /// 再透過單一 writeTxn 寫入，避免同步過程只更新部分卡池。
+  static Future<void> saveAllPoolsRecords(
     String uid,
-    String key,
-    List<dynamic> rawRecords,
+    Map<String, List<dynamic>> poolsMergedRecords,
   ) async {
     final targetUid = uid.contains('_') ? uid : '${uid}_2';
     final isar = await db;
 
-    final List<GachaRecord> isarRecords = rawRecords
-        .map((json) {
-          return _toGachaRecord(targetUid, key, json as Map<String, dynamic>);
-        })
-        .where((record) => record.seqId.isNotEmpty)
-        .toList();
+    // 先將所有卡池的資料轉換成 Isar 實體。
+    // 若轉換過程發生例外，此時尚未開始資料庫寫入。
+    final List<GachaRecord> allRecordsToSave = [];
 
+    for (final entry in poolsMergedRecords.entries) {
+      final poolKey = entry.key;
+      final rawRecords = entry.value;
+
+      final parsedRecords = rawRecords
+          .map((json) {
+            return _toGachaRecord(
+              targetUid,
+              poolKey,
+              json as Map<String, dynamic>,
+            );
+          })
+          .where((record) => record.seqId.isNotEmpty)
+          .toList();
+
+      allRecordsToSave.addAll(parsedRecords);
+    }
+
+    // 所有卡池使用同一個交易寫入，確保整批資料一起成功或回滾。
     await isar.writeTxn(() async {
-      await isar.gachaRecords.putAll(isarRecords);
+      await isar.gachaRecords.putAll(allRecordsToSave);
     });
   }
 

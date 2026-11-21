@@ -329,6 +329,17 @@ class _ExportDialogState extends State<ExportDialog> {
                         () => tempConfig['showFreePulls'] = val,
                       ),
                     ),
+                    SwitchListTile(
+                      title: const Text(
+                        '顯示跨池累計抽數',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
+                      ),
+                      value: tempConfig['showCrossPool'] ?? true,
+                      activeThumbColor: const Color(0xFFFFCC00),
+                      onChanged: (val) => setModalState(
+                        () => tempConfig['showCrossPool'] = val,
+                      ),
+                    ),
                   ],
                 ),
               ),

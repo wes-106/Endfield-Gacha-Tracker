@@ -1,4 +1,4 @@
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 
 part 'gacha_record.g.dart';
 
@@ -30,6 +30,7 @@ class GachaRecord {
 class SixStarPityItem {
   final String name;
   final int pityCount;
+  final int? crossPoolPulls;
   final bool? isUp;
   final String dateStr;
   final bool isMilestone;
@@ -39,6 +40,7 @@ class SixStarPityItem {
   SixStarPityItem({
     required this.name,
     required this.pityCount,
+    this.crossPoolPulls,
     this.isUp,
     required this.dateStr,
     this.isMilestone = false,
