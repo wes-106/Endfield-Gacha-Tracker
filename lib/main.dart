@@ -2,9 +2,10 @@ import 'dart:typed_data';
 
 import 'package:screenshot/screenshot.dart';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import 'models/gacha_record.dart';
+import 'models/game_role.dart';
 import 'models/pool_config.dart';
 import 'services/local_storage.dart';
 import 'services/data_parser.dart';
@@ -68,8 +69,13 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
   final ScreenshotController _exportController = ScreenshotController();
   List<SubBannerGroup> _exportBanners = [];
   bool _exportShowTime = true;
-  bool _exportShowAccount = false;
-  String _exportAccountName = '';
+  bool _exportShowUid = false;
+  bool _exportShowName = false;
+
+  // 目前選取帳號所對應的遊戲角色資訊。
+  GameRole? _currentGameRole;
+
+  Map<String, GameRole> _gameRolesByLocalUid = {};
 
   // 同步進度狀態
   bool _isSyncing = false;
@@ -87,7 +93,6 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
     'showFreePulls': true,
     'showCrossPool': true,
   };
-  Map<String, String> _savedAccountNames = {};
 
   // 圖片 CDN 與卡池 UP 對照字典
   Map<String, String> characterAvatarMap = {};
@@ -136,13 +141,6 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
           (key, value) => MapEntry(key.toString(), value == true),
         );
       }
-
-      if (data['account_names'] is Map) {
-        _savedAccountNames = (data['account_names'] as Map).map(
-          // 強制將 Key 與 Value 都轉為字串，避免 null 或數字造成崩潰
-          (key, value) => MapEntry(key.toString(), value.toString()),
-        );
-      }
     });
   }
 
@@ -174,6 +172,17 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
   // 3. 本機資料載入與遠端資源同步
   // ==========================================================================
 
+  /// 切換或重新載入帳號資料前，清除目前畫面上的舊帳號資料。
+  ///
+  /// 避免新帳號資料尚未載入完成時，畫面仍顯示舊帳號的卡池紀錄
+  /// 或遊戲角色資訊，造成帳號資料錯配。
+  void _clearAccountViewData(String targetUid) {
+    currentUid = targetUid;
+    _currentGameRole = null;
+
+    poolBannersData = {for (final config in appPoolConfigs) config.uiKey: []};
+  }
+
   /// 載入指定帳號的本機卡池紀錄，並轉換為 UI 使用的資料模型。
   ///
   /// 使用 Future.wait 併發讀取各卡池資料。
@@ -194,9 +203,28 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
         );
       }),
     );
+    // 取得目前本機識別鍵所對應的遊戲角色資訊。
+    final gameRole = await LocalStorage.getGameRole(uid);
+
+    // 避免非同步載入期間切換帳號，導致舊帳號資料覆蓋新帳號。
     if (!mounted || currentUid != uid) return;
+
     setState(() {
       poolBannersData = newPoolBanners;
+      _currentGameRole = gameRole;
+    });
+  }
+
+  /// 載入所有本機帳號對應的遊戲角色資訊。
+  ///
+  /// 使用 localDbUid 作為 Map Key，供帳號切換選單查詢遊戲 UID。
+  Future<void> _loadAllGameRoles() async {
+    final roles = await LocalStorage.getAllGameRoles();
+
+    if (!mounted) return;
+
+    setState(() {
+      _gameRolesByLocalUid = {for (final role in roles) role.localDbUid: role};
     });
   }
 
@@ -208,6 +236,12 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
     if (!mounted) return;
 
     final rawUids = await LocalStorage.getAllUids();
+
+    // 載入所有帳號對應的遊戲角色資訊。
+    await _loadAllGameRoles();
+
+    if (!mounted) return;
+
     if (rawUids.isNotEmpty) {
       setState(() {
         // 舊版 UID 若未包含伺服器後綴，統一補上預設後綴。
@@ -240,8 +274,8 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
   Future<void> _generateAndSaveImage(
     List<String> bannerNames,
     bool showTime,
-    bool showAccount,
-    String accountName,
+    bool showUid,
+    bool showName,
   ) async {
     bool isDialogShowing = true;
 
@@ -265,8 +299,8 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
             .where((b) => bannerNames.contains(b.bannerName))
             .toList();
         _exportShowTime = showTime;
-        _exportShowAccount = showAccount;
-        _exportAccountName = accountName;
+        _exportShowUid = showUid;
+        _exportShowName = showName;
       });
 
       await WidgetsBinding.instance.endOfFrame;
@@ -344,6 +378,22 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
             currentUid = normalizedUid;
             poolBannersData = newPools;
             selectedPool = 'Special';
+            _currentGameRole = null;
+          });
+
+          // 取得剛完成同步的遊戲角色資訊。
+          final gameRole = await LocalStorage.getGameRole(normalizedUid);
+
+          if (!mounted || currentUid != normalizedUid) return;
+
+          setState(() {
+            _currentGameRole = gameRole;
+
+            if (gameRole != null) {
+              _gameRolesByLocalUid[normalizedUid] = gameRole;
+            } else {
+              _gameRolesByLocalUid.remove(normalizedUid);
+            }
           });
         },
       ),
@@ -361,10 +411,6 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
 
     final bannerNames = currentSubBanners.map((b) => b.bannerName).toList();
 
-    final String initialNameForThisUid = currentUid != null
-        ? (_savedAccountNames[currentUid!] ?? '')
-        : '';
-
     showDialog(
       context: context,
       builder: (context) => ExportDialog(
@@ -373,57 +419,20 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
             .displayName,
         bannerNames: bannerNames,
         initialShowTime: _exportShowTime,
-        initialShowAccount: _exportShowAccount,
-        initialAccountName: initialNameForThisUid,
+        initialShowUid: _exportShowUid,
+        initialShowName: _exportShowName,
         exportConfig: _exportBadgeConfig,
         onConfigSaved: (newConfig) async {
+          await SettingsService.saveExportConfig(newConfig);
+
+          if (!mounted) return;
+
           setState(() {
             _exportBadgeConfig = newConfig;
           });
-          await SettingsService.saveExportConfig(newConfig);
         },
-        onExport: (toExport, showTime, showAccount, accountName) async {
-          if (currentUid != null && showAccount) {
-            final String trimmedName = accountName.trim();
-            final String previousName = _savedAccountNames[currentUid!] ?? '';
-
-            // 先更新畫面與記憶體中的帳號名稱。
-            setState(() {
-              _savedAccountNames[currentUid!] = trimmedName;
-            });
-
-            // 寫入本機設定檔。
-            final success = await SettingsService.saveAccountName(
-              currentUid!,
-              trimmedName,
-            );
-
-            // 寫入失敗時還原原始狀態並通知使用者。
-            if (!success && mounted) {
-              setState(() {
-                if (previousName.isEmpty) {
-                  _savedAccountNames.remove(currentUid!);
-                } else {
-                  _savedAccountNames[currentUid!] = previousName;
-                }
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('⚠️ 帳號名稱儲存失敗，下次啟動將恢復原狀'),
-                  backgroundColor: Color(0xFFEF4444),
-                  duration: Duration(seconds: 3),
-                ),
-              );
-            }
-          }
-
-          // 無論名稱是否成功存入實體檔案，當下的圖片生成依然可以繼續執行
-          await _generateAndSaveImage(
-            toExport,
-            showTime,
-            showAccount,
-            accountName,
-          );
+        onExport: (toExport, showTime, showUid, showName) async {
+          await _generateAndSaveImage(toExport, showTime, showUid, showName);
         },
       ),
     );
@@ -442,21 +451,30 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
     return Scaffold(
       drawer: isMobile
           ? AppDrawer(
+              hostContext: context,
               currentUid: currentUid,
               accountUids: accountUids,
+              gameRoles: _gameRolesByLocalUid,
               isSyncing: _isSyncing,
               autoBackupEnabled: _autoBackupEnabled,
               onUidChanged: (newUid) async {
                 setState(() {
-                  currentUid = newUid;
+                  _clearAccountViewData(newUid);
                 });
                 await _loadLocalDataForCurrentUid();
+                await _loadAllGameRoles();
               },
               onExportPressed: _isSyncing ? () {} : _showExportDialog,
               onSyncPressed: _isSyncing ? () {} : _showTokenSyncDialog,
               onAutoBackupChanged: _updateAutoBackupPreference,
               onReloadRequested: () async {
+                final uid = currentUid;
+                if (uid == null) return;
+                setState(() {
+                  _clearAccountViewData(uid);
+                });
                 await _loadLocalDataForCurrentUid();
+                await _loadAllGameRoles();
               },
             )
           : null,
@@ -550,13 +568,18 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                   onPressed: () => showDialog(
                     context: context,
                     builder: (_) => BackupSettingsDialog(
+                      hostContext: context,
                       accountUids: accountUids,
                       currentUid: currentUid,
+                      gameRoles: _gameRolesByLocalUid,
                       initialAutoBackupEnabled: _autoBackupEnabled,
                       onAutoBackupChanged: _updateAutoBackupPreference,
                       onReloadData: (newUid) async {
-                        setState(() => currentUid = newUid);
+                        setState(() {
+                          _clearAccountViewData(newUid);
+                        });
                         await _loadLocalDataForCurrentUid();
+                        await _loadAllGameRoles();
                       },
                     ),
                   ),
@@ -592,7 +615,7 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Text(
-                              'UID: ${currentUid ?? "未知"}',
+                              'UID: ${_gameRolesByLocalUid[currentUid]?.roleId ?? "未知"}',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
@@ -616,7 +639,7 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                               padding: EdgeInsets.zero,
                               child: Center(
                                 child: Text(
-                                  'UID: $uid',
+                                  'UID: ${_gameRolesByLocalUid[uid]?.roleId ?? "未知"}',
                                   style: const TextStyle(
                                     color: Colors.white,
                                     fontSize: 13,
@@ -633,7 +656,7 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                             : '${newUid}_2';
                         if (normalizedUid != currentUid) {
                           setState(() {
-                            currentUid = normalizedUid;
+                            _clearAccountViewData(normalizedUid);
                           });
                           await _loadLocalDataForCurrentUid();
                         }
@@ -721,29 +744,39 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
-                            if (_exportShowAccount) ...[
-                              if (_exportAccountName.trim().isNotEmpty) ...[
-                                Text(
-                                  _exportAccountName,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: 1.2,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                              ],
+                            // 帳號名稱獨立顯示。
+                            if (_exportShowName)
                               Text(
-                                'UID: ${currentUid?.split('_').first ?? "未知"}',
+                                _currentGameRole?.nickName?.isNotEmpty == true
+                                    ? _currentGameRole!.nickName!
+                                    : '未知角色',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+
+                            if (_exportShowName && _exportShowUid)
+                              const SizedBox(height: 2),
+
+                            // 遊戲 UID 獨立顯示。
+                            if (_exportShowUid)
+                              Text(
+                                'UID: ${_currentGameRole?.roleId?.isNotEmpty == true ? _currentGameRole!.roleId! : "未知"}',
                                 style: const TextStyle(
                                   color: Color(0xFFFFCC00),
                                   fontSize: 13,
                                   fontWeight: FontWeight.w900,
                                 ),
                               ),
+
+                            if ((_exportShowName || _exportShowUid) &&
+                                _exportShowTime)
                               const SizedBox(height: 6),
-                            ],
+
+                            // 生成時間獨立顯示。
                             if (_exportShowTime)
                               Text(
                                 '生成時間：${DateTime.now().toString().substring(0, 16)}',
@@ -832,37 +865,73 @@ class _TrackerDashboardPageState extends State<TrackerDashboardPage> {
                               ),
                               const SizedBox(height: 8),
                               const Text(
-                                '第一次使用嗎？您可以點擊下方按鈕查看詳細的教學，\n了解如何獲取 Token 並同步資料。',
+                                '官方僅保留近 90 天紀錄，同步後會存於本機；點擊下方按鈕即可開始',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   color: Colors.white54,
                                   fontSize: 13,
-                                  height: 1.4,
+                                  height: 1.5,
                                 ),
                               ),
-                              const SizedBox(height: 20),
-                              ElevatedButton.icon(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFFFCC00),
-                                  foregroundColor: Colors.black,
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20,
-                                    vertical: 12,
+                              const SizedBox(height: 22),
+                              Wrap(
+                                spacing: 12,
+                                runSpacing: 12,
+                                alignment: WrapAlignment.center,
+                                children: [
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: const Color(0xFFFFCC00),
+                                      foregroundColor: Colors.black,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 20,
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.sync, size: 18),
+                                    label: const Text(
+                                      '立即同步尋訪紀錄',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    onPressed: _isSyncing
+                                        ? null
+                                        : _showTokenSyncDialog,
                                   ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: const Color(0xFF60A5FA),
+                                      side: BorderSide(
+                                        color: const Color(0xFF60A5FA)
+                                            .withValues(alpha: 0.6),
+                                      ),
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 18,
+                                        vertical: 12,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.menu_book, size: 18),
+                                    label: const Text(
+                                      '完整使用說明',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    onPressed: () =>
+                                        InfoDialogs.showInstructionsDialog(
+                                          context,
+                                        ),
                                   ),
-                                ),
-                                icon: const Icon(Icons.menu_book, size: 18),
-                                label: const Text(
-                                  '查看新手使用說明',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                onPressed: () =>
-                                    InfoDialogs.showInstructionsDialog(context),
+                                ],
                               ),
                             ],
                           ),

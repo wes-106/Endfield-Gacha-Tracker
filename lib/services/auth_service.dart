@@ -189,7 +189,12 @@ class AuthService {
             if (innerRole is! Map) continue;
 
             flatRoles.add({
+              // Binding API 帳號 UID，仍用於取得 U8 Token。
               'uid': uid,
+
+              // 遊戲內實際 UID。
+              'roleId': innerRole['roleId']?.toString(),
+
               'serverId': innerRole['serverId']?.toString() ?? '2',
               'serverName': innerRole['serverName']?.toString() ?? '未知伺服器',
               'nickName': innerRole['nickName']?.toString() ?? '未知角色',

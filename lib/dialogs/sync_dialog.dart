@@ -1,19 +1,22 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../models/gacha_record.dart';
+import '../models/pool_config.dart';
 import '../services/auth_service.dart';
 import '../services/api_service.dart';
 import '../services/local_storage.dart';
 import '../services/backup_service.dart';
 import '../services/data_parser.dart';
-import '../models/gacha_record.dart';
-import '../models/pool_config.dart';
 
 class SyncDialog extends StatefulWidget {
   final String? savedAccountToken;
   final Map<String, List<String>> bannerUpMap;
 
-  final Function(String newUid, Map<String, List<SubBannerGroup>> newPools)
+  final Future<void> Function(
+    String newUid,
+    Map<String, List<SubBannerGroup>> newPools,
+  )
   onSyncCompleted;
   final Function(String statusText) onStatusChanged;
   final Function(bool isSyncing) onSyncingChanged;
@@ -55,7 +58,8 @@ class _SyncDialogState extends State<SyncDialog> {
     super.dispose();
   }
 
-  /// 執行完整同步流程，取得遠端紀錄並合併至本機資料。
+  /// 執行完整同步流程，取得並合併遠端尋訪紀錄，
+  /// 儲存遊戲角色資訊，並依設定執行自動備份。
   Future<void> _startFullSync(
     Map<String, dynamic> role,
     String oauthToken,
@@ -70,11 +74,15 @@ class _SyncDialogState extends State<SyncDialog> {
     final autoBackupEnabled = widget.autoBackupEnabled;
     final bannerUpMap = widget.bannerUpMap;
 
-    // 取得 API 使用的原始 UID 與伺服器代號。
-    final String realUid = role["uid"].toString();
-    final String serverId = role["serverId"]?.toString() ?? '2';
+    // 取得 Binding API 帳號 UID、遊戲角色 UID 與伺服器資訊。
+    final String realUid = role['uid'].toString();
+    final String? roleId = role['roleId']?.toString();
+    final String serverId = role['serverId']?.toString() ?? '2';
+    final String? nickName = role['nickName']?.toString();
+    final String? serverName = role['serverName']?.toString();
 
-    // 本機 UID 加上伺服器代號，區分同一帳號在不同伺服器的資料。
+    // 使用 Binding API 帳號 UID 與伺服器 ID 組成本機識別鍵，
+    // 確保同一帳號在不同伺服器的尋訪紀錄彼此獨立。
     final String localDbUid = '${realUid}_$serverId';
 
     Navigator.pop(context);
@@ -161,7 +169,27 @@ class _SyncDialogState extends State<SyncDialog> {
       // 4. 將所有卡池紀錄透過單一 Isar 交易寫入。
       await LocalStorage.saveAllPoolsRecords(localDbUid, mergedDataMap);
 
-      // 5. 自動備份（失敗不影響已完成同步的資料）。
+      // 5. 儲存遊戲角色資訊，供主畫面及圖片匯出功能使用。
+      bool roleSaveSuccess = true;
+
+      try {
+        await LocalStorage.saveGameRole(
+          localDbUid: localDbUid,
+          accountUid: realUid,
+          serverId: serverId,
+          roleId: roleId,
+          nickName: nickName,
+          serverName: serverName,
+        );
+      } catch (e, stackTrace) {
+        // 角色資訊儲存失敗不應影響已完成的尋訪紀錄同步。
+        roleSaveSuccess = false;
+
+        debugPrint('遊戲角色資訊儲存失敗：$e');
+        debugPrintStack(stackTrace: stackTrace);
+      }
+
+      // 6. 自動備份（失敗不影響已完成同步的資料）。
       bool backupSuccess = true;
 
       if (autoBackupEnabled) {
@@ -173,10 +201,10 @@ class _SyncDialogState extends State<SyncDialog> {
         }
       }
 
-      // 6. 將同步完成的 UID 與各卡池資料交回呼叫端。
-      onSyncCompleted(localDbUid, newPools);
+      // 7. 將本機識別鍵與更新後的卡池資料交回呼叫端，更新主畫面。
+      await onSyncCompleted(localDbUid, newPools);
 
-      if (backupSuccess) {
+      if (backupSuccess && roleSaveSuccess) {
         messenger.showSnackBar(
           const SnackBar(
             content: Text('🎉 尋訪紀錄同步完成！'),
@@ -184,11 +212,21 @@ class _SyncDialogState extends State<SyncDialog> {
           ),
         );
       } else {
+        final warnings = <String>[];
+
+        if (!roleSaveSuccess) {
+          warnings.add('遊戲角色資訊儲存失敗');
+        }
+
+        if (!backupSuccess) {
+          warnings.add('自動備份失敗');
+        }
+
         messenger.showSnackBar(
-          const SnackBar(
-            content: Text('⚠️ 資料同步成功，但「自動備份」失敗。'),
-            backgroundColor: Color(0xFFF59E0B),
-            duration: Duration(seconds: 5),
+          SnackBar(
+            content: Text('⚠️ 尋訪紀錄同步成功，但${warnings.join('、')}。'),
+            backgroundColor: const Color(0xFFF59E0B),
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -211,6 +249,9 @@ class _SyncDialogState extends State<SyncDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // 手機版縮小 Token 輸入框高度，降低內容占用。
+    final isMobile = MediaQuery.of(context).size.width < 600;
+
     return AlertDialog(
       backgroundColor: const Color(0xFF181920),
       title: const Row(
@@ -225,244 +266,260 @@ class _SyncDialogState extends State<SyncDialog> {
       ),
       content: SizedBox(
         width: 480,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // 偵測到多個角色時，改為顯示伺服器與角色選擇清單。
-            if (_availableRoles.isNotEmpty) ...[
-              const Text(
-                '✨ 偵測到多個伺服器紀錄，請點擊選擇要同步的帳號：',
-                style: TextStyle(
-                  color: Color(0xFFFFCC00),
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 偵測到多個角色時，改為顯示伺服器與角色選擇清單。
+              if (_availableRoles.isNotEmpty) ...[
+                const Text(
+                  '✨ 偵測到多個伺服器紀錄，請點擊選擇要同步的帳號：',
+                  style: TextStyle(
+                    color: Color(0xFFFFCC00),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                constraints: const BoxConstraints(maxHeight: 200),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1E2029),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white12),
-                ),
-                // 使用透明 Material，讓 ListView 中的 ListTile 保有互動效果。
-                child: Material(
-                  color: Colors.transparent,
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: _availableRoles.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1, color: Colors.white12),
-                    itemBuilder: (context, index) {
-                      final roleData = _availableRoles[index];
+                const SizedBox(height: 12),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E2029),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  // 使用透明 Material，讓 ListView 中的 ListTile 保有互動效果。
+                  child: Material(
+                    color: Colors.transparent,
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _availableRoles.length,
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1, color: Colors.white12),
+                      itemBuilder: (context, index) {
+                        final roleData = _availableRoles[index];
 
-                      final serverName =
-                          roleData['serverName']?.toString() ?? '未知伺服器';
-                      final nickName =
-                          roleData['nickName']?.toString() ?? '未知角色';
-                      final uid = roleData['uid']?.toString() ?? '未知';
+                        final serverName =
+                            roleData['serverName']?.toString() ?? '未知伺服器';
+                        final nickName =
+                            roleData['nickName']?.toString() ?? '未知角色';
+                        final roleId = roleData['roleId']?.toString() ?? '未知';
 
-                      return ListTile(
-                        hoverColor: Colors.white.withAlpha(15),
-                        leading: const Icon(
-                          Icons.person,
-                          color: Color(0xFF60A5FA),
-                        ),
-                        title: Text(
-                          '$serverName - $nickName',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
+                        return ListTile(
+                          hoverColor: Colors.white.withAlpha(15),
+                          leading: const Icon(
+                            Icons.person,
+                            color: Color(0xFF60A5FA),
                           ),
-                        ),
-                        subtitle: Text(
-                          'UID: $uid',
-                          style: const TextStyle(
+                          title: Text(
+                            '$serverName - $nickName',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 14,
+                            ),
+                          ),
+                          subtitle: Text(
+                            'UID: $roleId',
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing: const Icon(
+                            Icons.chevron_right,
                             color: Colors.white54,
+                          ),
+                          onTap: () =>
+                              _startFullSync(roleData, _workingOauthToken!),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ] else ...[
+                // 尚未取得角色清單時，顯示 Token 輸入與操作說明。
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444).withAlpha(38),
+                    border: Border.all(
+                      color: const Color(0xFFEF4444).withAlpha(128),
+                    ),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.public, color: Color(0xFFFCA5A5), size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '本工具目前僅適用於「終末地國際服」',
+                          style: TextStyle(
+                            color: Color(0xFFFCA5A5),
                             fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            height: 1.4,
                           ),
                         ),
-                        trailing: const Icon(
-                          Icons.chevron_right,
-                          color: Colors.white54,
-                        ),
-                        onTap: () =>
-                            _startFullSync(roleData, _workingOauthToken!),
-                      );
-                    },
+                      ),
+                    ],
                   ),
                 ),
-              ),
-            ] else ...[
-              // 尚未取得角色清單時，顯示 Token 輸入與操作說明。
-              Container(
-                padding: const EdgeInsets.all(10),
-                margin: const EdgeInsets.only(bottom: 16),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEF4444).withAlpha(38),
-                  border: Border.all(
-                    color: const Color(0xFFEF4444).withAlpha(128),
+                const Text(
+                  '獲取 Token 流程：',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
                   ),
-                  borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Row(
+                const SizedBox(height: 8),
+                Row(
                   children: [
-                    Icon(Icons.public, color: Color(0xFFFCA5A5), size: 18),
-                    SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF252732),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        icon: const Icon(Icons.login, size: 16),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            '1. 登入官網',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        onPressed: () async {
+                          try {
+                            final launched = await launchUrl(
+                              Uri.parse('https://user.gryphline.com/'),
+                              mode: LaunchMode.externalApplication,
+                            );
+
+                            if (!launched && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('無法開啟網頁，請確認是否安裝或設定預設瀏覽器！'),
+                                  backgroundColor: Color(0xFFEF4444),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('無法開啟網頁，發生預期外的系統錯誤！'),
+                                backgroundColor: Color(0xFFEF4444),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF252732),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        icon: const Icon(Icons.content_copy, size: 16),
+                        label: const FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            '2. 獲取 Token',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        onPressed: () async {
+                          try {
+                            final launched = await launchUrl(
+                              Uri.parse(
+                                'https://web-api.gryphline.com/cookie_store/account_token',
+                              ),
+                              mode: LaunchMode.externalApplication,
+                            );
+
+                            if (!launched && context.mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('無法開啟網頁，請確認是否安裝或設定預設瀏覽器！'),
+                                  backgroundColor: Color(0xFFEF4444),
+                                ),
+                              );
+                            }
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('無法開啟網頁，發生預期外的系統錯誤！'),
+                                backgroundColor: Color(0xFFEF4444),
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '完成登入後請勿關閉瀏覽器，直接切回本程式再點「2. 獲取 Token」複製並貼入下方。',
+                  style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 12,
+                    height: 1.4,
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Divider(color: Colors.white12),
+                ),
+                const Text(
+                  '3. 將獲取到的整段文字貼在下方：',
+                  style: TextStyle(color: Colors.white70, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _controller,
+                  maxLines: isMobile ? 2 : 4,
+                  style: const TextStyle(fontSize: 12),
+                  decoration: const InputDecoration(
+                    hintText: '例如: {"data":{"content":"KcjPLsX..."}} 或純字串',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.hourglass_empty,
+                      color: Colors.white54,
+                      size: 16,
+                    ),
+                    SizedBox(width: 6),
                     Expanded(
                       child: Text(
-                        '請注意：本工具目前僅適用於「終末地國際服 (Global)」，不支援陸服帳號資料解析。',
+                        '溫馨提示：初次導入需抓取完整紀錄，耗時較長，同步期間請勿關閉程式。',
                         style: TextStyle(
-                          color: Color(0xFFFCA5A5),
+                          color: Colors.white54,
                           fontSize: 12,
-                          fontWeight: FontWeight.bold,
                           height: 1.4,
                         ),
                       ),
                     ),
                   ],
                 ),
-              ),
-              const Text(
-                '獲取 Token 流程：',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF252732),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      icon: const Icon(Icons.login, size: 16),
-                      label: const FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text('1. 登入官網', style: TextStyle(fontSize: 12)),
-                      ),
-                      onPressed: () async {
-                        try {
-                          final launched = await launchUrl(
-                            Uri.parse('https://user.gryphline.com/'),
-                            mode: LaunchMode.externalApplication,
-                          );
-
-                          if (!launched && context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('無法開啟網頁，請確認是否安裝或設定預設瀏覽器！'),
-                                backgroundColor: Color(0xFFEF4444),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('無法開啟網頁，發生預期外的系統錯誤！'),
-                              backgroundColor: Color(0xFFEF4444),
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF252732),
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                      ),
-                      icon: const Icon(Icons.content_copy, size: 16),
-                      label: const FittedBox(
-                        fit: BoxFit.scaleDown,
-                        child: Text(
-                          '2. 獲取 Token',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                      onPressed: () async {
-                        try {
-                          final launched = await launchUrl(
-                            Uri.parse(
-                              'https://web-api.gryphline.com/cookie_store/account_token',
-                            ),
-                            mode: LaunchMode.externalApplication,
-                          );
-
-                          if (!launched && context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('無法開啟網頁，請確認是否安裝或設定預設瀏覽器！'),
-                                backgroundColor: Color(0xFFEF4444),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (!context.mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('無法開啟網頁，發生預期外的系統錯誤！'),
-                              backgroundColor: Color(0xFFEF4444),
-                            ),
-                          );
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 12),
-                child: Divider(color: Colors.white12),
-              ),
-              const Text(
-                '3. 將獲取到的整段文字貼在下方：',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _controller,
-                maxLines: 4,
-                style: const TextStyle(fontSize: 12),
-                decoration: const InputDecoration(
-                  hintText: '例如: {"data":{"content":"KcjPLsX..."}} 或純字串',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-
-              // 提醒使用者首次同步可能需要較長時間。
-              const Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.hourglass_empty, color: Colors.white54, size: 16),
-                  SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      '溫馨提示：初次導入由於需要獲取完整的歷史尋訪紀錄，可能會耗費較長時間，同步期間請勿關閉程式。',
-                      style: TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12,
-                        height: 1.4,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
       actions: _availableRoles.isNotEmpty

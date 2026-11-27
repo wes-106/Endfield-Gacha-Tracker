@@ -1,22 +1,22 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class ExportDialog extends StatefulWidget {
   final String poolTitle;
   final List<String> bannerNames;
   final bool initialShowTime;
-  final bool initialShowAccount;
-  final String initialAccountName;
+  final bool initialShowUid;
+  final bool initialShowName;
   final Map<String, bool> exportConfig;
 
   /// 儲存玩家調整後的圖表顯示設定。
-  final Function(Map<String, bool>) onConfigSaved;
+  final Future<void> Function(Map<String, bool>) onConfigSaved;
 
   /// 將匯出選項回傳給主畫面，由主畫面執行圖片生成。
   final Function(
     List<String> toExport,
     bool showTime,
-    bool showAccount,
-    String accountName,
+    bool showUid,
+    bool showName,
   )
   onExport;
 
@@ -25,8 +25,8 @@ class ExportDialog extends StatefulWidget {
     required this.poolTitle,
     required this.bannerNames,
     required this.initialShowTime,
-    required this.initialShowAccount,
-    required this.initialAccountName,
+    required this.initialShowUid,
+    required this.initialShowName,
     required this.exportConfig,
     required this.onConfigSaved,
     required this.onExport,
@@ -39,8 +39,8 @@ class ExportDialog extends StatefulWidget {
 class _ExportDialogState extends State<ExportDialog> {
   late Map<String, bool> selectedBanners;
   late bool showTime;
-  late bool showAccount;
-  late TextEditingController nameController;
+  late bool showUid;
+  late bool showName;
 
   @override
   void initState() {
@@ -50,14 +50,8 @@ class _ExportDialogState extends State<ExportDialog> {
     selectedBanners = {for (var name in widget.bannerNames) name: false};
 
     showTime = widget.initialShowTime;
-    showAccount = widget.initialShowAccount;
-    nameController = TextEditingController(text: widget.initialAccountName);
-  }
-
-  @override
-  void dispose() {
-    nameController.dispose();
-    super.dispose();
+    showUid = widget.initialShowUid;
+    showName = widget.initialShowName;
   }
 
   @override
@@ -109,43 +103,34 @@ class _ExportDialogState extends State<ExportDialog> {
               dense: true,
               visualDensity: VisualDensity.compact,
               contentPadding: EdgeInsets.zero,
-              onChanged: (val) => setState(() => showTime = val ?? true),
+              onChanged: (val) => setState(() => showTime = val ?? false),
             ),
             CheckboxListTile(
               title: const Text(
-                '加上「帳號名稱 + UID」',
+                '加上「UID」',
                 style: TextStyle(fontSize: 14, color: Colors.white),
               ),
-              value: showAccount,
+              value: showUid,
               activeColor: const Color(0xFFFFCC00),
               checkColor: Colors.black,
               dense: true,
               visualDensity: VisualDensity.compact,
               contentPadding: EdgeInsets.zero,
-              onChanged: (val) => setState(() => showAccount = val ?? false),
+              onChanged: (val) => setState(() => showUid = val ?? false),
             ),
-            if (showAccount)
-              Padding(
-                padding: const EdgeInsets.only(
-                  left: 32,
-                  top: 4,
-                  bottom: 8,
-                  right: 16,
-                ),
-                child: TextField(
-                  controller: nameController,
-                  style: const TextStyle(fontSize: 13, color: Colors.white),
-                  decoration: const InputDecoration(
-                    hintText: '請輸入帳號名稱 (選填)',
-                    isDense: true,
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    border: OutlineInputBorder(),
-                  ),
-                ),
+            CheckboxListTile(
+              title: const Text(
+                '加上「帳號名稱」',
+                style: TextStyle(fontSize: 14, color: Colors.white),
               ),
+              value: showName,
+              activeColor: const Color(0xFFFFCC00),
+              checkColor: Colors.black,
+              dense: true,
+              visualDensity: VisualDensity.compact,
+              contentPadding: EdgeInsets.zero,
+              onChanged: (val) => setState(() => showName = val ?? false),
+            ),
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
               child: Divider(color: Colors.white12),
@@ -237,12 +222,7 @@ class _ExportDialogState extends State<ExportDialog> {
             Navigator.pop(context);
 
             // 將匯出選項回傳主畫面，由主畫面執行圖片生成。
-            widget.onExport(
-              toExport,
-              showTime,
-              showAccount,
-              nameController.text.trim(),
-            );
+            widget.onExport(toExport, showTime, showUid, showName);
           },
           child: const Text(
             '生成圖片',
@@ -355,9 +335,29 @@ class _ExportDialogState extends State<ExportDialog> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFFFCC00),
                   ),
-                  onPressed: () {
-                    widget.onConfigSaved(tempConfig);
-                    Navigator.pop(context);
+                  onPressed: () async {
+                    final messenger = ScaffoldMessenger.of(context);
+
+                    try {
+                      await widget.onConfigSaved(tempConfig);
+
+                      if (!context.mounted) return;
+
+                      Navigator.pop(context);
+                    } catch (e) {
+                      if (!context.mounted) return;
+
+                      final errorMsg = e.toString().replaceAll(
+                        'Exception: ',
+                        '',
+                      );
+                      messenger.showSnackBar(
+                        SnackBar(
+                          content: Text('設定儲存失敗：$errorMsg'),
+                          backgroundColor: const Color(0xFFEF4444),
+                        ),
+                      );
+                    }
                   },
                   child: const Text(
                     '套用',

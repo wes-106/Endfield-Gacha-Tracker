@@ -18,7 +18,7 @@ class SettingsService {
     return File('${dir.path}${Platform.pathSeparator}app_settings.json');
   }
 
-  /// 讀取所有設定。
+  /// 讀取所有設定，並相容舊版圖片匯出設定。
   static Future<Map<String, dynamic>> loadSettings() async {
     final file = await _getSettingsFile();
 
@@ -30,11 +30,32 @@ class SettingsService {
       final content = await file.readAsString();
       final data = jsonDecode(content);
 
-      if (data is Map) {
-        return Map<String, dynamic>.from(data);
+      if (data is! Map) {
+        throw const FormatException('設定檔格式錯誤，預期應為 JSON 物件。');
       }
 
-      throw const FormatException('設定檔格式錯誤，預期應為 JSON 物件。');
+      final settings = Map<String, dynamic>.from(data);
+
+      // 將舊版「帳號資訊」設定轉換成獨立的 UID 與名稱設定。
+      final exportConfig = settings['export_config'];
+
+      if (exportConfig is Map) {
+        final config = Map<String, dynamic>.from(exportConfig);
+
+        if (config['showAccount'] is bool) {
+          final oldValue = config['showAccount'] as bool;
+
+          // 僅在新設定不存在時，才使用舊設定補上預設值。
+          config.putIfAbsent('showUid', () => oldValue);
+          config.putIfAbsent('showName', () => oldValue);
+
+          config.remove('showAccount');
+        }
+
+        settings['export_config'] = config;
+      }
+
+      return settings;
     } catch (e) {
       debugPrint('讀取設定檔失敗：$e');
       rethrow;
@@ -73,40 +94,6 @@ class SettingsService {
     } catch (e) {
       debugPrint('儲存匯出設定失敗：$e');
       rethrow;
-    }
-  }
-
-  /// 儲存指定帳號的別名，並保留其他既有設定。
-  static Future<bool> saveAccountName(String uid, String name) async {
-    final trimmedName = name.trim();
-
-    if (trimmedName.isEmpty) return false;
-
-    try {
-      final file = await _getSettingsFile();
-      await file.parent.create(recursive: true);
-
-      final data = await loadSettings();
-
-      // 讀取既有帳號別名，避免覆蓋其他帳號的名稱。
-      Map<String, String> names = {};
-
-      if (data['account_names'] is Map) {
-        names = Map<String, String>.from(
-          (data['account_names'] as Map).map(
-            (key, value) => MapEntry(key.toString(), value.toString()),
-          ),
-        );
-      }
-
-      names[uid] = trimmedName;
-      data['account_names'] = names;
-
-      await file.writeAsString(jsonEncode(data));
-      return true;
-    } catch (e) {
-      debugPrint('儲存帳號名稱失敗：$e');
-      return false;
     }
   }
 }

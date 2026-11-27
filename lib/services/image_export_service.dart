@@ -10,7 +10,7 @@ class ImageExportService {
   static Future<String> saveImage(Uint8List capturedImage) async {
     final String timestamp = DateTime.now().millisecondsSinceEpoch.toString();
 
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (Platform.isAndroid) {
       final result = await ImageGallerySaverPlus.saveImage(
         capturedImage,
         name: "Endfield_Record_$timestamp",

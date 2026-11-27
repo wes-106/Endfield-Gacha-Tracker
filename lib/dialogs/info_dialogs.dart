@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 集中管理應用程式中的靜態說明對話框，
@@ -58,7 +58,7 @@ class InfoDialogs {
                   ),
                   const Center(
                     child: Text(
-                      'Made by wes-106  |  v1.2.0',
+                      'Made by wes-106  |  v1.3.0',
                       style: TextStyle(
                         color: Colors.white38,
                         fontSize: 12,
@@ -158,7 +158,7 @@ class InfoDialogs {
     );
   }
 
-  /// 顯示應用程式使用說明與常見問題。
+  /// 顯示應用程式使用說明與常見問題（折疊式呈現）。
   static void showInstructionsDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -183,75 +183,153 @@ class InfoDialogs {
             width: 480,
             child: SingleChildScrollView(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _buildDisclaimerItem(
-                    '1. 尋訪紀錄保存機制',
-                    '官方伺服器僅會保留「最近 90 天內」的尋訪紀錄，超過此期限的歷史數據將無法再從官方獲取，若初次同步無法顯示更早之前的紀錄為正常現象。\n'
-                        '只要盡早將紀錄同步至本程式，數據便會永久交由您的本地設備保存，不再受 90 天限制。請注意：若設備損毀、遺失，或您主動清除應用程式資料，本地的歷史紀錄仍會消失，請善用匯出備份功能。',
-                  ),
-                  _buildDisclaimerItem(
-                    '2. 如何導入資料',
-                    '① 點選右上角或側邊欄的「同步尋訪紀錄」\n'
-                        '② 點選「1. 登入官網」，在手機或系統預設瀏覽器內完成登入\n'
-                        '③ 【重要】請勿滑掉或關閉該瀏覽器，直接切回本程式\n'
-                        '④ 點選「2. 獲取 Token」，複製畫面上出現的整段代碼\n'
-                        '⑤ 將代碼貼入下方輸入框並點選「開始同步」即可',
-                  ),
-                  _buildDisclaimerItem(
-                    '3. 閱讀數據與圖表',
-                    '• 卡池分類：提供「特許、武庫、常駐、重構、啟程」五大類別，手機版可透過上方選單左右滑動查看。\n'
-                        '• 獨立計算：為確保機率準確，受保底機制影響的「常規尋訪」與無保底的「階段免費十連」獨立計算，避免數據污染。\n'
-                        '• 數據面板：點擊卡片或大類統計上的「全部數據」按鈕，可查看完整的 UP/歪明細、綜合彩率，以及 4★/5★/6★ 稀有度分布圖。',
-                  ),
-                  _buildDisclaimerItem(
-                    '4. 客製化圖片導出',
-                    '點擊右上角的「導出圖片」後，您可以透過設定視窗右上角的「齒輪圖示」，自由開啟或關閉想在圖片中展示的數據標籤（如：UP/歪明細、彩率、稀有度分布圖等）。\n'
-                        '系統會記住您的圖表排版偏好，以及您為不同 UID 帳號所輸入的帳號名稱。',
-                  ),
-                  _buildDisclaimerItem(
-                    '5. 多帳號切換',
-                    '每次同步時，程式會自動識別該次登入的角色 UID 與所屬伺服器。為避免跨伺服器紀錄互相干擾，系統會自動在 UID 後方加上伺服器代號進行區隔（例如 _2 代表亞服，_3 代表歐美服）。您可以隨時點選畫面上方的 UID 下拉選單快速切換不同伺服器的紀錄，無須重新登入。',
-                  ),
-                  _buildRichDisclaimerItem('6. 雙重資料保護機制', [
-                    const TextSpan(
-                      text:
-                          '為防止設備損壞導致資料遺失，本程式提供兩套獨立的備份系統：\n\n'
-                          '【自動備份】\n'
-                          '開啟開關後，每次同步都會在系統內部寫入最新的備份（電腦版存於下載資料夾或應用程式目錄，手機版存於內部私有目錄）。\n'
-                          '由於每次都是自動覆蓋舊檔不佔空間，此功能「主要用於應對日常同步異常或操作上的小差錯」，若不慎導致資料錯亂，可點擊「從最新的自動備份還原」快速復原。\n',
-                    ),
-                    const WidgetSpan(
-                      alignment: PlaceholderAlignment.middle,
-                      child: Padding(
-                        padding: EdgeInsets.only(right: 4.0),
-                        child: Icon(
-                          Icons.warning_rounded,
-                          color: Color(0xFFF59E0B),
-                          size: 16,
+                  _buildExpandableItem(
+                    context: context,
+                    title: '1. 尋訪紀錄保存機制',
+                    initiallyExpanded: false,
+                    children: [
+                      const Text(
+                        '官方伺服器僅保留「最近 90 天內」的尋訪紀錄，超過期限的歷史數據便無法再從官方獲取。\n'
+                        '同步後，紀錄會保存在您的本機設備，不再受官方 90 天保存期限限制。\n'
+                        '但若設備損毀、遺失，或您清除應用程式資料，本機紀錄仍可能消失，重要資料請務必手動匯出備份。',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          height: 1.5,
                         ),
                       ),
-                    ),
-                    const TextSpan(
-                      text: '注意：',
-                      style: TextStyle(
-                        color: Color(0xFFEF4444),
-                        fontWeight: FontWeight.bold,
+                    ],
+                  ),
+                  _buildExpandableItem(
+                    context: context,
+                    title: '2. 如何導入資料',
+                    initiallyExpanded: true,
+                    children: [
+                      const Text(
+                        '① 點選右上角或側邊欄的「同步尋訪紀錄」\n'
+                        '② 點選「1. 登入官網」並在瀏覽器內完成登入\n'
+                        '③ 【重要】勿關閉瀏覽器，直接切回本程式\n'
+                        '④ 點選「2. 獲取 Token」複製畫面上完整代碼\n'
+                        '⑤ 貼入下方輸入框並點選「開始同步」',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          height: 1.55,
+                        ),
                       ),
-                    ),
-                    const TextSpan(
-                      text: '手機版（APK）若將應用程式解除安裝或清除 App 資料，內部的自動備份檔將會隨之被系統刪除，無法作為永久保存之用。\n\n',
-                    ),
-                    const TextSpan(
-                      text:
-                          '【手動匯出】\n'
-                          '點擊「匯出資料備份」會將當下紀錄存成專屬的 JSON 實體檔案，並讓您自選儲存位置。若要跨設備轉移資料或長期防護，請務必使用此功能。',
-                    ),
-                  ]),
-                  _buildDisclaimerItem(
-                    '7. 重置與解除安裝 (Windows 電腦版)',
-                    '若您使用的是電腦版 (EXE) 並希望徹底清除資料或準備解除安裝，請在「資料備份與設定」視窗中點擊「清除所有本機資料」按鈕。這將會安全地刪除本機的快取與設定庫（不影響您手動匯出的備份檔）。執行關閉後，直接刪除應用程式資料夾即可達到無殘留的乾淨卸載。手機版用戶則可直接透過系統設定「清除資料」即可。',
+                    ],
+                  ),
+                  _buildExpandableItem(
+                    context: context,
+                    title: '3. 閱讀數據與圖表',
+                    initiallyExpanded: false,
+                    children: [
+                      const Text(
+                        '卡池分類：提供「特許、武庫、重構、常駐、啟程」五大類別，手機版可透過上方選單左右滑動查看。\n'
+                        '• 獨立計算：常規尋訪與階段免費十連分開統計，避免無保底的免費十連紀錄影響常規尋訪的保底與抽數統計。\n'
+                        '• 全部數據：點擊「全部數據」可查看 UP/歪明細、彩率與稀有度分布圖等。',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildExpandableItem(
+                    context: context,
+                    title: '4. 客製化圖片導出',
+                    initiallyExpanded: false,
+                    children: [
+                      const Text(
+                        '在「導出圖片」視窗右上角點選「齒輪圖示」，可自訂要顯示的數據項目；系統會自動記住排版設定。\n'
+                        '此外，也可以分別選擇是否在圖片中顯示生成時間、遊戲 UID 與帳號名稱。',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildExpandableItem(
+                    context: context,
+                    title: '5. 多帳號切換',
+                    initiallyExpanded: false,
+                    children: [
+                      const Text(
+                        '每次同步時，程式會自動取得目前登入帳號所對應的遊戲 UID，並依所屬伺服器分別保存尋訪紀錄。\n'
+                        '您可以透過畫面上方或側邊欄的「遊戲 UID」選單，直接切換已同步過的帳號紀錄。',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildExpandableItem(
+                    context: context,
+                    title: '6. 雙重資料保護機制',
+                    initiallyExpanded: false,
+                    children: [
+                      Text.rich(
+                        TextSpan(
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
+                          children: [
+                            const TextSpan(
+                              text: '• 自動備份：開啟後，每次同步都會自動更新最新備份。電腦版儲存於下載資料夾或應用程式目錄，手機版則儲存於 App 內部私有目錄。此功能主要用於應對日常同步異常或操作失誤，可透過「從最新的自動備份還原」快速復原。\n',
+                            ),
+                            const WidgetSpan(
+                              alignment: PlaceholderAlignment.middle,
+                              child: Padding(
+                                padding: EdgeInsets.only(right: 4.0),
+                                child: Icon(
+                                  Icons.warning_rounded,
+                                  color: Color(0xFFF59E0B),
+                                  size: 15,
+                                ),
+                              ),
+                            ),
+                            const TextSpan(
+                              text: '注意：',
+                              style: TextStyle(
+                                color: Color(0xFFEF4444),
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const TextSpan(
+                              text: '手機版解除安裝或清除 App 資料，可能會使內部的自動備份一併被系統刪除，因此不能將其視為永久保存的備份。\n\n',
+                            ),
+                            const TextSpan(
+                              text: '• 手動匯出：點擊「匯出資料備份」可將紀錄儲存為獨立的 JSON 檔案，並自行選擇保存位置。若要跨設備轉移資料或長期保存，請務必使用此功能。',
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  _buildExpandableItem(
+                    context: context,
+                    title: '7. 重置與解除安裝',
+                    initiallyExpanded: false,
+                    children: [
+                      const Text(
+                        '• 電腦版：於「資料備份與設定」點選「清除本機資料」，關閉程式後即可刪除應用程式資料夾，完成乾淨卸載（不影響手動匯出的備份檔）。\n'
+                        '• 手機版：可透過系統設定中的「清除資料」重置應用程式。',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -277,6 +355,89 @@ class InfoDialogs {
     );
   }
 
+  /// 顯示舊版備份未包含遊戲角色 UID 時的提示對話框。
+  static Future<void> showLegacyBackupNoticeDialog(BuildContext context) {
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: const Color(0xFF181920),
+        title: const Text(
+          '舊版備份匯入完成',
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: const Text(
+          '舊版備份未包含遊戲角色 UID，因此帳號選單暫時顯示「UID: 未知」，'
+          '這是正常現象，並非資料匯入失敗。\n\n'
+          '請執行一次「同步尋訪紀錄」，系統便會自動取得並補齊遊戲角色資訊。',
+          style: TextStyle(color: Colors.white70, fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text(
+              '我知道了',
+              style: TextStyle(
+                color: Color(0xFFFFCC00),
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 建立折疊式說明項目。
+  static Widget _buildExpandableItem({
+    required BuildContext context,
+    required String title,
+    required List<Widget> children,
+    bool initiallyExpanded = false,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: const Color(0xFF1E2029),
+        borderRadius: BorderRadius.circular(8),
+        clipBehavior: Clip.antiAlias,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white10),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              initiallyExpanded: initiallyExpanded,
+              tilePadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 0,
+              ),
+              childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+              expandedAlignment: Alignment.centerLeft,
+              expandedCrossAxisAlignment: CrossAxisAlignment.start,
+              iconColor: const Color(0xFFFFCC00),
+              collapsedIconColor: Colors.white54,
+              title: Text(
+                title,
+                style: const TextStyle(
+                  color: Color(0xFFFFCC00),
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
+              ),
+              children: children,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   /// 建立一般說明項目，包含標題與純文字內容。
   static Widget _buildDisclaimerItem(String title, String content) {
     return Padding(
@@ -299,37 +460,6 @@ class InfoDialogs {
               color: Colors.white70,
               fontSize: 13,
               height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 建立包含多種文字樣式或圖示的說明項目。
-  static Widget _buildRichDisclaimerItem(String title, List<InlineSpan> spans) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: Color(0xFFFFCC00),
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text.rich(
-            TextSpan(
-              style: const TextStyle(
-                color: Colors.white70,
-                fontSize: 13,
-                height: 1.5,
-              ),
-              children: spans,
             ),
           ),
         ],

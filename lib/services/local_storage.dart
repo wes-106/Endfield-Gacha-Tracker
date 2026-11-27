@@ -2,9 +2,10 @@ import 'dart:io';
 
 import 'package:isar_community/isar.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../models/gacha_record.dart';
+import '../models/game_role.dart';
 
 class LocalStorage {
   static Isar? _isar;
@@ -21,7 +22,10 @@ class LocalStorage {
       dir = await getApplicationDocumentsDirectory();
     }
 
-    _isar = await Isar.open([GachaRecordSchema], directory: dir.path);
+    _isar = await Isar.open([
+      GachaRecordSchema,
+      GameRoleSchema,
+    ], directory: dir.path);
 
     return _isar!;
   }
@@ -108,6 +112,63 @@ class LocalStorage {
     // 所有卡池使用同一個交易寫入，確保整批資料一起成功或回滾。
     await isar.writeTxn(() async {
       await isar.gachaRecords.putAll(allRecordsToSave);
+    });
+  }
+
+  /// 儲存或更新指定本機識別鍵的遊戲角色資料。
+  ///
+  /// 使用 localDbUid 判斷是否已有對應資料，
+  /// 有資料時更新原有實體，沒有資料時建立新實體。
+  static Future<void> saveGameRole({
+    required String localDbUid,
+    required String accountUid,
+    required String serverId,
+    String? roleId,
+    String? nickName,
+    String? serverName,
+  }) async {
+    final isar = await db;
+
+    await isar.writeTxn(() async {
+      final existingRole = await isar.gameRoles
+          .filter()
+          .localDbUidEqualTo(localDbUid)
+          .findFirst();
+
+      final role = existingRole ?? GameRole();
+
+      role
+        ..localDbUid = localDbUid
+        ..accountUid = accountUid
+        ..serverId = serverId
+        ..roleId = roleId
+        ..nickName = nickName
+        ..serverName = serverName;
+
+      await isar.gameRoles.put(role);
+    });
+  }
+
+  /// 取得指定本機識別鍵的遊戲角色資料。
+  static Future<GameRole?> getGameRole(String localDbUid) async {
+    final isar = await db;
+
+    return isar.gameRoles.filter().localDbUidEqualTo(localDbUid).findFirst();
+  }
+
+  /// 取得所有已儲存的遊戲角色資料。
+  static Future<List<GameRole>> getAllGameRoles() async {
+    final isar = await db;
+
+    return isar.gameRoles.where().findAll();
+  }
+
+  /// 刪除指定本機識別鍵的遊戲角色資料。
+  static Future<void> deleteGameRole(String localDbUid) async {
+    final isar = await db;
+
+    await isar.writeTxn(() async {
+      await isar.gameRoles.filter().localDbUidEqualTo(localDbUid).deleteAll();
     });
   }
 

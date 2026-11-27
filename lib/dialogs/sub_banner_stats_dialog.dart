@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../models/gacha_record.dart';
 import '../widgets/rarity_distribution_bar.dart';

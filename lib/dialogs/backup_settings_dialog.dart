@@ -1,21 +1,27 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
+import 'info_dialogs.dart';
+import '../models/game_role.dart';
 import '../services/backup_service.dart';
 import '../services/local_storage.dart';
 
 class BackupSettingsDialog extends StatefulWidget {
+  final BuildContext hostContext;
   final List<String> accountUids;
   final String? currentUid;
+  final Map<String, GameRole> gameRoles;
   final bool initialAutoBackupEnabled;
   final Future<void> Function(bool) onAutoBackupChanged;
   final Future<void> Function(String newUid) onReloadData;
 
   const BackupSettingsDialog({
     super.key,
+    required this.hostContext,
     required this.accountUids,
     required this.currentUid,
+    required this.gameRoles,
     required this.initialAutoBackupEnabled,
     required this.onAutoBackupChanged,
     required this.onReloadData,
@@ -89,7 +95,7 @@ class _BackupSettingsDialogState extends State<BackupSettingsDialog> {
                                   color: Color(0xFF60A5FA),
                                 ),
                                 title: Text(
-                                  'UID: $uid',
+                                  'UID: ${widget.gameRoles[uid]?.roleId ?? "未知"}',
                                   style: TextStyle(
                                     color: uid == widget.currentUid
                                         ? const Color(0xFFFFCC00)
@@ -151,6 +157,8 @@ class _BackupSettingsDialogState extends State<BackupSettingsDialog> {
                 style: TextStyle(color: Colors.white70, fontSize: 13),
               ),
               onTap: () async {
+                bool shouldShowLegacyNotice = false;
+
                 final success = await BackupService.importBackupFromFile(
                   context,
                   widget.currentUid,
@@ -158,10 +166,19 @@ class _BackupSettingsDialogState extends State<BackupSettingsDialog> {
                   (newUid) async {
                     await widget.onReloadData(newUid);
                   },
+                  onLegacyBackupWithoutRole: () async {
+                    shouldShowLegacyNotice = true;
+                  },
                 );
 
-                if (success && context.mounted) {
-                  Navigator.pop(context);
+                if (!success || !context.mounted) return;
+
+                Navigator.pop(context);
+
+                if (shouldShowLegacyNotice && widget.hostContext.mounted) {
+                  await InfoDialogs.showLegacyBackupNoticeDialog(
+                    widget.hostContext,
+                  );
                 }
               },
             ),
@@ -239,6 +256,8 @@ class _BackupSettingsDialogState extends State<BackupSettingsDialog> {
                 style: TextStyle(color: Colors.white70, fontSize: 13),
               ),
               onTap: () async {
+                bool shouldShowLegacyNotice = false;
+
                 final success = await BackupService.restoreFromAutoBackup(
                   context,
                   widget.currentUid,
@@ -247,10 +266,19 @@ class _BackupSettingsDialogState extends State<BackupSettingsDialog> {
                       await widget.onReloadData(widget.currentUid!);
                     }
                   },
+                  onLegacyBackupWithoutRole: () async {
+                    shouldShowLegacyNotice = true;
+                  },
                 );
 
-                if (success && context.mounted) {
-                  Navigator.pop(context);
+                if (!success || !context.mounted) return;
+
+                Navigator.pop(context);
+
+                if (shouldShowLegacyNotice && widget.hostContext.mounted) {
+                  await InfoDialogs.showLegacyBackupNoticeDialog(
+                    widget.hostContext,
+                  );
                 }
               },
             ),

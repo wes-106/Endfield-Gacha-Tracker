@@ -1,25 +1,30 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 import '../dialogs/info_dialogs.dart';
+import '../models/game_role.dart';
 import '../services/backup_service.dart';
 
 class AppDrawer extends StatelessWidget {
+  final BuildContext hostContext;
   final String? currentUid;
   final List<String> accountUids;
+  final Map<String, GameRole> gameRoles;
   final bool isSyncing;
   final bool autoBackupEnabled;
 
   // 由父層提供的操作回呼，實際資料處理與狀態更新由父層負責。
-  final Function(String) onUidChanged;
+  final Future<void> Function(String newUid) onUidChanged;
   final VoidCallback onExportPressed;
   final VoidCallback onSyncPressed;
   final Future<void> Function(bool) onAutoBackupChanged;
-  final VoidCallback onReloadRequested;
+  final Future<void> Function() onReloadRequested;
 
   const AppDrawer({
     super.key,
+    required this.hostContext,
     required this.currentUid,
     required this.accountUids,
+    required this.gameRoles,
     required this.isSyncing,
     required this.autoBackupEnabled,
     required this.onUidChanged,
@@ -33,7 +38,8 @@ class AppDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     return Drawer(
       backgroundColor: const Color(0xFF14151B),
-      child: Column(
+      child: ListView(
+        padding: EdgeInsets.zero,
         children: [
           // 側邊欄標題區域。
           DrawerHeader(
@@ -115,7 +121,7 @@ class AppDrawer extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Text(
-                            'UID: ${currentUid ?? "未知"}',
+                            'UID: ${gameRoles[currentUid]?.roleId ?? "未知"}',
                             style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -139,7 +145,7 @@ class AppDrawer extends StatelessWidget {
                             padding: EdgeInsets.zero,
                             child: Center(
                               child: Text(
-                                'UID: $uid',
+                                'UID: ${gameRoles[uid]?.roleId ?? "未知"}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 13,
@@ -150,9 +156,9 @@ class AppDrawer extends StatelessWidget {
                           ),
                         )
                         .toList(),
-                    onSelected: (newUid) {
+                    onSelected: (newUid) async {
                       if (newUid != currentUid) {
-                        onUidChanged(newUid);
+                        await onUidChanged(newUid);
                       }
                     },
                   ),
@@ -235,7 +241,7 @@ class AppDrawer extends StatelessWidget {
                                 color: Color(0xFF60A5FA),
                               ),
                               title: Text(
-                                'UID: $uid',
+                                'UID: ${gameRoles[uid]?.roleId ?? "未知"}',
                                 style: TextStyle(
                                   // 以顏色與粗體標示目前選取的帳號。
                                   color: uid == currentUid
@@ -297,6 +303,8 @@ class AppDrawer extends StatelessWidget {
               style: TextStyle(color: Colors.white70, fontSize: 13),
             ),
             onTap: () async {
+              bool shouldShowLegacyNotice = false;
+
               // 保留側邊欄所在的 context，直到匯入流程完成。
               final success = await BackupService.importBackupFromFile(
                 context,
@@ -304,16 +312,23 @@ class AppDrawer extends StatelessWidget {
                 accountUids,
                 (newUid) async {
                   if (newUid != currentUid) {
-                    onUidChanged(newUid);
+                    await onUidChanged(newUid);
                   } else {
-                    onReloadRequested();
+                    await onReloadRequested();
                   }
+                },
+                onLegacyBackupWithoutRole: () async {
+                  shouldShowLegacyNotice = true;
                 },
               );
 
               // 匯入結束後再關閉側邊欄。
-              if (success && context.mounted) {
-                Navigator.pop(context);
+              if (!success || !context.mounted) return;
+
+              Navigator.pop(context);
+
+              if (shouldShowLegacyNotice && hostContext.mounted) {
+                await InfoDialogs.showLegacyBackupNoticeDialog(hostContext);
               }
             },
           ),
@@ -326,16 +341,25 @@ class AppDrawer extends StatelessWidget {
               style: TextStyle(color: Colors.white70, fontSize: 13),
             ),
             onTap: () async {
+              bool shouldShowLegacyNotice = false;
+
               final success = await BackupService.restoreFromAutoBackup(
                 context,
                 currentUid,
                 () async {
-                  onReloadRequested();
+                  await onReloadRequested();
+                },
+                onLegacyBackupWithoutRole: () async {
+                  shouldShowLegacyNotice = true;
                 },
               );
 
-              if (success && context.mounted) {
-                Navigator.pop(context);
+              if (!success || !context.mounted) return;
+
+              Navigator.pop(context);
+
+              if (shouldShowLegacyNotice && hostContext.mounted) {
+                await InfoDialogs.showLegacyBackupNoticeDialog(hostContext);
               }
             },
           ),

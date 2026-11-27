@@ -26,6 +26,13 @@ const List<PoolConfig> appPoolConfigs = [
     apiPoolType: 'E_CharacterGachaPoolType_Special',
   ),
   PoolConfig(
+    uiKey: 'Weapon',
+    dbKey: 'pool_weapon',
+    displayName: '武庫申領',
+    isWeapon: true,
+    apiPoolType: null,
+  ),
+  PoolConfig(
     uiKey: 'Refactor',
     dbKey: 'pool_refactor',
     displayName: '重構尋訪',
@@ -38,13 +45,6 @@ const List<PoolConfig> appPoolConfigs = [
     displayName: '常駐尋訪',
     isWeapon: false,
     apiPoolType: 'E_CharacterGachaPoolType_Standard',
-  ),
-  PoolConfig(
-    uiKey: 'Weapon',
-    dbKey: 'pool_weapon',
-    displayName: '武庫申領',
-    isWeapon: true,
-    apiPoolType: null,
   ),
   PoolConfig(
     uiKey: 'Beginner',
