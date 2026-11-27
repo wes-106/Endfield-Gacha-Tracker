@@ -26,12 +26,12 @@
 * **Android 手機版**：下載 `Endfield_Tracker.apk` 直接安裝。
 
 ### 檔案安全校驗 (SHA-256)
-為了確保您下載的檔案為作者本人發布且未遭惡意竄改，您可以使用以下 SHA-256 雜湊值進行核對（當前版本 v1.2.0）：
+為了確保您下載的檔案為作者本人發布且未遭惡意竄改，您可以使用以下 SHA-256 雜湊值進行核對（當前版本 v1.3.0）：
 
 | 檔案名稱 | SHA-256 雜湊值 |
 | :--- | :--- |
-| `Endfield_Tracker.zip` | `56D6884305FE3D3B7F2088F7F4AAE13CC5D21F76BAA3ED2CBCD992C9DF10C6BA` |
-| `Endfield_Tracker.apk` | `8813C0D8ABE54BB7E89182F64DFF12E784F30273073438C46104274DCA5D55D7` |
+| `Endfield_Tracker.zip` | `32C76A6C5E36E0AFBA514B5D01B2DB0ECF76364D717EFBDA6A31023FAED46B4A` |
+| `Endfield_Tracker.apk` | `D51B78751DF10FC846B9D18F7B402105F4CE6BDF44F8333AEF429361FE86D142` |
 
 > **驗證方法：**
 > * Windows: 打開 PowerShell 輸入 `Get-FileHash <檔案路徑> -Algorithm SHA256`
