@@ -567,11 +567,11 @@ class BackupService {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            roleRestoreError == null
+            warnings.isEmpty
                 ? (isOverwrite ? '🎉 備份還原成功 (已完全覆蓋)！' : '🎉 備份匯入成功 (已合併紀錄)！')
                 : '⚠️ 資料已匯入，但${warnings.join('；')}。',
           ),
-          backgroundColor: roleRestoreError == null
+          backgroundColor: warnings.isEmpty
               ? const Color(0xFF10B981)
               : const Color(0xFFF59E0B),
           duration: const Duration(seconds: 5),
@@ -886,11 +886,11 @@ class BackupService {
       messenger.showSnackBar(
         SnackBar(
           content: Text(
-            roleRestoreError == null
+            warnings.isEmpty
                 ? '🛡️ 已成功從自動備份檔還原資料！'
                 : '⚠️ 資料已還原，但${warnings.join('；')}。',
           ),
-          backgroundColor: roleRestoreError == null
+          backgroundColor: warnings.isEmpty
               ? const Color(0xFF10B981)
               : const Color(0xFFF59E0B),
           duration: const Duration(seconds: 5),
